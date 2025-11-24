@@ -1,0 +1,14 @@
+<svg width="120" height="32" viewBox="0 0 120 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="16" cy="16" r="14" fill="white" opacity="0.9"/>
+  
+  <!-- AI/Robot icon -->
+  <path d="M12 10h8v8h-8v-8z" fill="#5E3FA6"/>
+  <circle cx="14" cy="13" r="1" fill="white"/>
+  <circle cx="18" cy="13" r="1" fill="white"/>
+  <path d="M13 16h6v1h-6v-1z" fill="white"/>
+  
+  <!-- Text -->
+  <text x="36" y="12" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">Apoyo AI</text>
+  <text x="36" y="24" fill="white" font-family="Arial, sans-serif" font-size="8">Empleo</text>
+</svg>

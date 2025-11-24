@@ -1,0 +1,12 @@
+# robots.txt for EmpleoSafari
+User-agent: *
+Allow: /
+
+# Disallow tekniske og API-stier
+Disallow: /api/
+Disallow: /_next/
+Disallow: /functions/
+Disallow: /admin/
+
+# Sitemap location
+Sitemap: https://empleosafari.com/sitemap.xml

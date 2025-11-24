@@ -1,0 +1,7 @@
+/* Tailwind v4 – enkelt og hurtigt */
+@import "tailwindcss";
+
+/* Fortæl Tailwind hvor dine klasser findes (globs) */
+@source "./src/app/**/*.{js,jsx}";
+@source "./src/components/**/*.{js,jsx}";
+@source "./src/**/*.{js,jsx}";
