@@ -26,7 +26,7 @@ export async function generateStaticParams() {
 
 // Metadata (Standard SEO - ingen Geo her da robotter ikke har en lokation)
 export async function generateMetadata({ params }) {
-  const { id } = params;
+  const { id } = await params;
   try {
     const response = await jobsService.getJobById(id);
     if (response?.success) {
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }) {
 
 // SERVER COMPONENT
 export default async function JobDetailsPage({ params }) {
-  const { id } = params;
+  const { id } = await params;
 
   let data = null;
   try {

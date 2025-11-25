@@ -545,6 +545,9 @@ const baseState = {
   paymentId: null,
   intentId: null,
   secureToken: null,
+  speiReference: null,
+  oxxoVoucher: null,
+  oxxoExpiresAt: null,
   pollingInterval: null,
 };
 
@@ -593,6 +596,9 @@ function applyNowReducer(state, action) {
         paymentId: action.payload.paymentId,
         intentId: action.payload.intentId,
         secureToken: action.payload.secureToken || state.secureToken,
+        speiReference: action.payload.speiReference || null,
+        oxxoVoucher: action.payload.oxxoVoucher || null,
+        oxxoExpiresAt: action.payload.oxxoExpiresAt || null,
         isLoading: false,
       };
 
@@ -682,6 +688,9 @@ const ApplyNowModal = ({
     paymentId,
     intentId,
     secureToken,
+    speiReference,
+    oxxoVoucher,
+    oxxoExpiresAt,
     pollingInterval
   } = state;
 
@@ -1367,6 +1376,49 @@ const ApplyNowModal = ({
             isLoading: false,
           },
         });
+      } else if (methodId === "spei") {
+        const chargeResponse = await tonderService.charge({
+          intent_id: intent_id,
+          method: 'spei',
+        });
+
+        if (!chargeResponse.success) {
+          throw new Error(chargeResponse.error || "Failed to generate SPEI reference");
+        }
+
+        dispatch({
+          type: "PAYMENT_PEEENDING",
+          payload: {
+            paymentId: payment_id,
+            intentId: intent_id,
+            secureToken: secure_token,
+            speiReference: chargeResponse.data.reference,
+          },
+        });
+
+        startPaymentPolling(payment_id)
+      } else if (methodId === "oxxo") {
+        const chargeResponse = await tonderService.charge({
+          intent_id: intent_id,
+          method: 'oxxo',
+        });
+
+        if (!chargeResponse.succeeess) {
+          throw new Error(chargeResponse.error || "Failed to generate OXXO voucher");
+        }
+
+        dispatch({
+          type: "PAYMENT_PENDING",
+          payload: {
+            paymentId: payment_id,
+            intentId: intent_id,
+            secureToken: secure_token,
+            oxxoVoucher: chargeResponse.data.voucher?.barcode,
+            oxxoExpiresAt: chargeResponse.data.voucher?.expires_at,
+          },
+        });
+
+        startPaymentPolling(payment_id);
       }
     } catch (err) {
       dispatch({ 
@@ -2726,28 +2778,67 @@ const ApplyNowModal = ({
                       )}
 
                       {paymentStatus === 'pending' && (
-                        <div className=""></div>
+                        <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                          {speiReference && (
+                            <div>
+                              <h4 className="font-semibold text-yellow-800 mb-2">
+                                Referencia SPEI generada
+                              </h4>
+                              <p className="text-sm text-yellow-700 mb-2">
+                                Usa esta referencia para realizar tu transferencia:
+                              </p>
+                              <div className="bg-white p-3 rounded border border-yellow-300">
+                                <code className="text-lg font-mono font-bold">{speiReference}</code>
+                              </div>
+                              <p className="text-xs text-yellow-600 mt-2">
+                                Estamos verificando tu pago. Esto puede tardar unos minutos.
+                              </p>
+                            </div>
+                          )}
+                          
+                          {oxxoVoucher && (
+                            <div>
+                              <h4 className="font-semibold text-yellow-800 mb-2">
+                                Voucher OXXO generado
+                              </h4>
+                              <p className="text-sm text-yellow-700 mb-2">
+                                Paga en cualquier tienda OXXO con este código:
+                              </p>
+                              <div className="bg-white p-3 rounded border border-yellow-300 text-center">
+                                <div className="text-2xl font-mono font-bold mb-2">{oxxoVoucher}</div>
+                              </div>
+                              {oxxoExpiresAt && (
+                                <p className="text-xs text-yellow-600 mt-2">
+                                  Válido hasta: {new Date(oxxoExpiresAt).toLocaleString('es-MX')}
+                                </p>
+                              )}
+                              <p className="text-xs text-yellow-600 mt-2">
+                                Estamos verificando tu pago. Esto puede tardar unos minutos.
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       )}
 
-                      {paymentStatus === 'succeeded' && (
-                        <div className="">
-                          <p className="">
+                     {paymentStatus === 'succeeded' && (
+                        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+                          <p className="text-green-800 font-semibold">
                             ¡Pago confirmado! Redirigiendo...
                           </p>
                         </div>
                       )}
 
                       {paymentStatus === 'failed' && (
-                        <div className="">
-                          <p className="">
+                        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                          <p className="text-red-800 font-semibold">
                             El pago falló. Por favor, intenta de nuevo.
                           </p>
                         </div>
                       )}
 
                       {paymentStatus === 'expired' && (
-                        <div className="">
-                          <p className="">
+                        <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                          <p className="text-orange-800 font-semibold">
                             El pago expiró. Por favor, genera un nuevo pago.
                           </p>
                         </div>

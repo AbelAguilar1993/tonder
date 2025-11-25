@@ -29,7 +29,8 @@ async function getCheckoutInstance() {
   liteCheckout = new sdk.LiteInlineCheckout({
     apiKey: process.env.NEXT_PUBLIC_TONDER_API_KEY,
     returnUrl: `${window.location.origin}/pagos/success`,
-    mode: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'development',
+    mode: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'stage',
+    baseUrl: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'https://api.tonder.io' : 'https://stage.tonder.io',
   });
 
   await liteCheckout.injectCheckout();
