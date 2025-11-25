@@ -7,54 +7,44 @@ import {
 let liteCheckout = null;
 let isInitialized = false;
 
-function getCheckoutInstance() {
+async function getCheckoutInstance() {
   if (isInitialized && liteCheckout) {
     return liteCheckout;
   }
 
-  if (typeof window === "undefined") {
-    console.warn("Tonder SDK can only be initialized in browser");
-
+  if (typeof window === 'undefined') {
     return null;
   }
 
   liteCheckout = new LiteInlineCheckout({
     apiKey: process.env.NEXT_PUBLIC_TONDER_API_KEY,
-    returnUrl: `${window.localStorage.origin}/pagos/success`,
-    mode:
-      process.env.NEXT_PUBLIC_TONDER_ENV === "production"
-        ? "production"
-        : "development",
+    returnUrl: `${window.location.origin}/pagos/success`,
+    mode: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'development',
   });
 
-  liteCheckout.injectCheckout();
+  await liteCheckout.injectCheckout();
   isInitialized = true;
 
   return liteCheckout;
 }
 
 export const tonderService = {
-  initialize(apiKey, mode = "development") {
+  async initialize(apiKey, mode = 'development') {
     if (isInitialized && liteCheckout) {
       return liteCheckout;
     }
 
-    if (typeof window === "undefined") {
-      console.warn("Tonder SDK can only be initialized in browser");
+    if (typeof window === 'undefined') {
       return null;
     }
 
     liteCheckout = new LiteInlineCheckout({
       apiKey: apiKey || process.env.NEXT_PUBLIC_TONDER_API_KEY,
       returnUrl: `${window.location.origin}/pagos/success`,
-      mode:
-        mode ||
-        (process.env.NEXT_PUBLIC_TONDER_ENV === "production"
-          ? "production"
-          : "development"),
+      mode: mode || (process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'development'),
     });
 
-    liteCheckout.injectCheckout();
+    await liteCheckout.injectCheckout();
     isInitialized = true;
 
     return liteCheckout;
@@ -64,7 +54,6 @@ export const tonderService = {
     try {
       return validateCardNumber(cardNumber);
     } catch (error) {
-      console.error("Card vaildation error:", error);
       return false;
     }
   },
@@ -73,82 +62,73 @@ export const tonderService = {
     try {
       return validateCVV(cvv);
     } catch (error) {
-      console.error("CVV validation error:", error);
       return false;
     }
   },
 
   async createIntent(params) {
-    const response = await fetch("/api.payments/tonder/create-intent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
+    const response = await fetch('/api/payments/tonder/create-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
     });
-
     return await response.json();
   },
 
   async processPayment(checkoutData) {
-    const checkout = getCheckoutInstance();
-
+    const checkout = await getCheckoutInstance();
+    
     if (!checkout) {
-      throw new Error("Tonder SDK not initialized");
+      throw new Error('Tonder SDK not initialized');
     }
 
     try {
       const response = await checkout.payment(checkoutData);
-
       return { success: true, data: response };
     } catch (error) {
-      console.error("Payment error:", error);
-      return { success: false, error: error.message || "Payment failed" };
+      return { success: false, error: error.message || 'Payment failed' };
     }
   },
 
-  configureCheckout(customerData, secureToken) {
-    const checkout = getCheckoutInstance();
-
-    if (!chekcout) {
-      throw new Error("Tonder SDK not initialized");
+  async configureCheckout(customerData, secureToken) {
+    const checkout = await getCheckoutInstance();
+    
+    if (!checkout) {
+      throw new Error('Tonder SDK not initialized');
     }
 
     checkout.configureCheckout({
-      customerData,
-      secureToken,
+      customer: customerData,
+      secureToken: secureToken
     });
   },
 
   async saveCustomerCard(cardData) {
-    const checkout = getCheckoutInstance();
-
+    const checkout = await getCheckoutInstance();
+    
     if (!checkout) {
-      throw new Error("Tonder SDK not initialized");
+      throw new Error('Tonder SDK not initialized');
     }
 
     try {
       const response = await checkout.saveCustomerCard(cardData);
-
       return { success: true, data: response };
     } catch (error) {
-      console.error("Save Card error:", error);
-
-      return { success: false, error: error.message || "Failed to save card" };
+      return { success: false, error: error.message || 'Failed to save card' };
     }
   },
 
   async charge(params) {
-    const response = await fetch("/api/payments/tonder/charge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
+    const response = await fetch('/api/payments/tonder/charge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
     });
-
     return await response.json();
   },
 
   async getStatus(paymentId) {
     const response = await fetch(`/api/payments/tonder/status/${paymentId}`);
-
     return await response.json();
   },
 
@@ -156,32 +136,24 @@ export const tonderService = {
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const status = await this.getStatus(paymentId);
-
+        
         if (status.success && status.data) {
-          if (status.data.status === "succeeded") {
-            return { status: "succeeded", data: status.data };
+          if (status.data.status === 'succeeded') {
+            return { status: 'succeeded', data: status.data };
           }
-
-          if (
-            status.data.status === "failed" ||
-            status.data.status === "expired"
-          ) {
-            return {
-              status: status.data.status,
-              error: "Payment failed or expired",
-            };
+          
+          if (status.data.status === 'failed' || status.data.status === 'expired') {
+            return { status: status.data.status, error: 'Payment failed or expired' };
           }
         }
-
-        await new Promise((resolve) => setTimeout(resolve, interval));
+        
+        await new Promise(resolve => setTimeout(resolve, interval));
       } catch (error) {
-        console.error('Polling error:', error);
-
         await new Promise(resolve => setTimeout(resolve, interval));
       }
     }
-
-    return { status: 'timeout', error: 'Payment status polling timeout'};
+    
+    return { status: 'timeout', error: 'Payment status polling timeout' };
   },
 };
 

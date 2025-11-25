@@ -27,7 +27,6 @@ export async function handleStatus(request, env, paymentId) {
       200,
     );
   } catch (error) {
-    console.error("Error getting payment status:", error);
     return createResponse(
       { error: "Internal server error", message: error.message },
       500,

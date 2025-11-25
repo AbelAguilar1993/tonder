@@ -33,7 +33,6 @@ export async function handleCreateIntent(request, env, user) {
 
     if (!tonderResponse.ok) {
       const errorData = await tonderResponse.json();
-      console.error("Tonder API error:", errorData);
       return createResponse(
         { error: "Failed to create payment intent", details: errorData },
         500,
@@ -78,7 +77,6 @@ export async function handleCreateIntent(request, env, user) {
       200,
     );
   } catch (error) {
-    console.error("Error creating payment intent:", error);
     return createResponse(
       { error: "Internal server error", message: error.message },
       500,

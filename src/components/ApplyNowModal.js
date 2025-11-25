@@ -13,8 +13,8 @@ import { useRouter } from "next/navigation";
 import { authService } from "../services/authService";
 import { jobsService } from "../services/jobsService";
 import { paymentsService } from "../services/paymentsService";
-import { tonderService } from "@/services/tonderService";
 import { creditsService } from "../services/creditsService";
+import { tonderService } from "../services/tonderService";
 import { useToast } from "./ui/Toast";
 import { useAuth } from "./AuthContext";
 import { getInitials, hexToRgb } from "../utils";
@@ -541,7 +541,7 @@ const baseState = {
   step2Checks: [],
   showManualOpen: false,
   manualUrl: "",
-  paymentStatus: 'idel',
+  paymentStatus: 'idle',
   paymentId: null,
   intentId: null,
   secureToken: null,
@@ -595,25 +595,25 @@ function applyNowReducer(state, action) {
         secureToken: action.payload.secureToken || state.secureToken,
         isLoading: false,
       };
-    
+
     case "PAYMENT_PROCESSING":
       return {
         ...state,
         paymentStatus: 'processing',
         isLoading: true,
       };
-    
+
     case "PAYMENT_SUCCEEDED":
       return {
         ...state,
         paymentStatus: 'succeeded',
         isLoading: false,
       };
- 
+
     case "PAYMENT_FAILED":
       return {
         ...state,
-        paymentStatus: 'falied',
+        paymentStatus: 'failed',
         isLoading: false,
       };
 
@@ -713,18 +713,18 @@ const ApplyNowModal = ({
     if (typeof window !== 'undefined' && isOpen) {
       tonderService.initialize(
         process.env.NEXT_PUBLIC_TONDER_API_KEY,
-        process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production': 'development'
+        process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'development'
       );
     }
   }, [isOpen]);
 
   useEffect(() => {
-    return() => {
+    return () => {
       if (pollingInterval) {
         clearInterval(pollingInterval);
       }
-    }
-  }, [pollingInterval])
+    };
+  }, [pollingInterval]);
 
   // Hooks
   useAutoGrow(messageTextareaRef, messageText, {
@@ -1239,15 +1239,15 @@ const ApplyNowModal = ({
     const interval = setInterval(async () => {
       try {
         const statusResponse = await tonderService.getStatus(paymentId);
-
+        
         if (statusResponse.success && statusResponse.data) {
           const status = statusResponse.data.status;
-
+          
           if (status === 'succeeded') {
             clearInterval(interval);
             dispatch({ type: 'PAYMENT_SUCCEEDED' });
             showSuccess("¡Pago confirmado! Redirigiendo...");
-
+            
             setTimeout(() => {
               if (authed) {
                 router.push('/panel');
@@ -1255,16 +1255,19 @@ const ApplyNowModal = ({
                 router.push('/pagos/success?redirect=panel');
               }
             }, 1500);
-          } else if (status === "failed" || status === 'expired') {
+          } else if (status === 'failed' || status === 'expired') {
             clearInterval(interval);
-            dispatch({
-              type: status === 'expired' ? 'PAYMENT_EXPIRED' : 'PAYMENT_FAILED'
+            dispatch({ 
+              type: status === 'expired' ? 'PAYMENT_EXPIRED' : 'PAYMENT_FAILED' 
             });
-            showError(status === 'expired' ? "El pago expiró. Por favor, intenta de nuevo." : "El pago falló. Por favor, intenta de nuevo.");
+            showError(status === 'expired' 
+              ? "El pago expiró. Por favor, intenta de nuevo."
+              : "El pago falló. Por favor, intenta de nuevo."
+            );
           }
         }
       } catch (error) {
-        console.error('Polling error:', error)
+        console.error('Polling error:', error);
       }
     }, 5000);
 
@@ -1322,12 +1325,6 @@ const ApplyNowModal = ({
 
       trackGoal(769);
 
-      // const payer = {
-      //   name: formData.fullName.trim(),
-      //   email: formData.email.trim(),
-      //   phone: payerPhone.trim(),
-      // };
-
       const intentResponse = await tonderService.createIntent({
         amount: 79,
         currency: 'mxn',
@@ -1337,38 +1334,21 @@ const ApplyNowModal = ({
           contact_id: selectedContact.id,
           extras: extras || {},
           message_text: (messageText || "").trim(),
-          payment_method: methodId || 'card',
+          payment_method: methodId || "card",
           email: formData.email.trim(),
           payer: {
             name: formData.fullName.trim(),
             email: formData.email.trim(),
-            phone: payerPhone.toString(),
+            phone: payerPhone.trim(),
           },
         },
       });
 
-      // const extraPayload = {
-      //   ...(extras || {}),
-      //   message_text: (messageText || "").trim(),
-      //   payment_method: methodId || "card",
-      // };
-
       if (!intentResponse.success) {
-        throw new Error(intentResponse.error || 'Failed to create payment intent');
+        throw new Error(intentResponse.error || "Failed to create payment intent");
       }
 
-      const {intent_id, payment_id, secure_token} = intentResponse.data;
-
-      // const response = await paymentsService.createCheckout({
-      //   job_id: job.id,
-      //   contact_id: selectedContact.id,
-      //   extras: extraPayload,
-      //   email: payer.email,
-      //   payer,
-      //   source: "step3-inline",
-      //   message: (messageText || "").trim(),
-      //   method: methodId || "card",
-      // });
+      const { intent_id, payment_id, secure_token } = intentResponse.data;
 
       dispatch({
         type: "PATCH",
@@ -1379,32 +1359,7 @@ const ApplyNowModal = ({
         },
       });
 
-      // if (response?.success && response?.data?.redirect_url) {
-      //   dispatch({
-      //     type: "PATCH",
-      //     payload: {
-      //       manualUrl: response.data.redirect_url,
-      //     },
-      //   });
-      //   setTimeout(() => {
-      //     dispatch({
-      //       type: "PATCH",
-      //       payload: { showManualOpen: true },
-      //     });
-      //   }, 900);
-
-      //   try {
-      //     sessionStorage.setItem(REDIRECT_FLAG, "1");
-      //     localStorage.removeItem(draftKey);
-      //     localStorage.removeItem(step2Key);
-      //   } catch {}
-      //   window.location.assign(response.data.redirect_url);
-      // } else {
-      //   dispatch({ type: "PATCH", payload: { isLoading: false } });
-      //   showError(response?.error || "No se pudo iniciar el pago.");
-      // }
-
-      if (methodId === 'card') {
+      if (methodId === "card") {
         dispatch({
           type: "PATCH",
           payload: {
@@ -1412,9 +1367,11 @@ const ApplyNowModal = ({
             isLoading: false,
           },
         });
-      } 
+      }
     } catch (err) {
-      dispatch({ type: "PAYMENT_FAILED" });
+      dispatch({ 
+        type: "PAYMENT_FAILED"
+      });
       showError(err?.message || "Error de pago — intenta de nuevo.");
     }
   };
@@ -2650,16 +2607,14 @@ const ApplyNowModal = ({
                             });
                             trackGoal(766);
                           } catch {}
-                          // await startCheckoutWithMethod("card");
 
-                          const cardNumberInput = document.getElementById('card-number-input');
-                          const cardExpiryInput = document.getElementById('card-expiry-input');
-                          const cardCvvInput = document.getElementById('card-cvv-input');
-                          const cardNameInput = document.getElementById('card-name-input');
+                          const cardNumberInput = document.getElementById("card-number-input");
+                          const cardExpiryInput = document.getElementById("card-expiry-input");
+                          const cardCvvInput = document.getElementById("card-cvv-input");
+                          const cardNameInput = document.getElementById("card-name-input");
 
-                          if (!cardNameInput?.value || !cardExpiryInput?.value || !cardCvvInput?.value || !cardNameInput?.value) {
+                          if (!cardNumberInput?.value || !cardExpiryInput?.value || !cardCvvInput?.value || !cardNameInput?.value) {
                             showError("Por favor, completa todos los campos de la tarjeta");
-
                             return;
                           }
 
@@ -2667,10 +2622,9 @@ const ApplyNowModal = ({
                           const fullYear = "20" + expYear;
 
                           const cardNumber = cardNumberInput.value.replace(/\s/g, "");
-
+                          
                           if (!tonderService.validateCardNumber(cardNumber)) {
                             showError("Número de tarjeta inválido");
-
                             return;
                           }
 
@@ -2681,16 +2635,15 @@ const ApplyNowModal = ({
 
                           let currentIntentId = intentId;
                           let currentSecureToken = secureToken;
-
+                          
                           if (!currentIntentId) {
-                            await startCheckout('card');
+                            await startCheckout("card");
                             await new Promise(resolve => setTimeout(resolve, 500));
 
                             const updatedState = state;
-
                             currentIntentId = updatedState.intentId;
                             currentSecureToken = updatedState.secureToken;
-
+                            
                             if (!currentIntentId) {
                               showError("Error: No se pudo crear el intento de pago. Intenta de nuevo.");
                               return;
@@ -2698,8 +2651,57 @@ const ApplyNowModal = ({
                           }
 
                           dispatch({ type: 'PAYMENT_PROCESSING' });
-                          
-                          try {}catch (error) {
+
+                          try {
+                            await tonderService.configureCheckout(
+                              {
+                                firstName: formData.fullName.split(' ')[0] || formData.fullName,
+                                email: formData.email.trim(),
+                              },
+                              currentSecureToken
+                            );
+
+                            const checkoutData = {
+                              customer: {
+                                firstName: formData.fullName.split(' ')[0] || formData.fullName,
+                                lastName: formData.fullName.split(' ').slice(1).join(' ') || '',
+                                email: formData.email.trim(),
+                              },
+                              currency: 'mxn',
+                              cart: {
+                                total: 79,
+                                items: [{
+                                  name: `Acceso al reclutador - ${job?.title || 'Empleo'}`,
+                                  amount_total: 79
+                                }]
+                              },
+                              card: {
+                                card_number: cardNumber,
+                                cardholder_name: cardNameInput.value || formData.fullName,
+                                expiration_month: expMonth,
+                                expiration_year: fullYear,
+                                cvv: cardCvvInput.value,
+                              }
+                            };
+
+                            const paymentResponse = await tonderService.processPayment(checkoutData);
+
+                            if (paymentResponse.success) {
+                              dispatch({ type: 'PAYMENT_SUCCEEDED' });
+                              showSuccess("¡Pago confirmado! Redirigiendo...");
+                              
+                              setTimeout(() => {
+                                if (authed) {
+                                  router.push('/panel');
+                                } else {
+                                  router.push('/pagos/success?redirect=panel');
+                                }
+                              }, 1500);
+                            } else {
+                              dispatch({ type: 'PAYMENT_FAILED' });
+                              showError(paymentResponse.error || "El pago fue rechazado. Por favor, intenta con otra tarjeta.");
+                            }
+                          } catch (error) {
                             dispatch({ type: 'PAYMENT_FAILED' });
                             showError(error.message || "Error al procesar el pago.");
                           }
@@ -2724,26 +2726,30 @@ const ApplyNowModal = ({
                       )}
 
                       {paymentStatus === 'pending' && (
-                        <div className="mt-4 p-4 bg-yellow-50 border"></div>
+                        <div className=""></div>
                       )}
 
                       {paymentStatus === 'succeeded' && (
-                        <div>
-                          <p>
+                        <div className="">
+                          <p className="">
                             ¡Pago confirmado! Redirigiendo...
                           </p>
                         </div>
                       )}
-                      
+
                       {paymentStatus === 'failed' && (
-                        <div>
-                          <p>El pago falló. Por favor, intenta de nuevo.</p>
+                        <div className="">
+                          <p className="">
+                            El pago falló. Por favor, intenta de nuevo.
+                          </p>
                         </div>
                       )}
-                      
+
                       {paymentStatus === 'expired' && (
-                        <div>
-                          <p>El pago expiró. Por favor, genera un nuevo pago.</p>
+                        <div className="">
+                          <p className="">
+                            El pago expiró. Por favor, genera un nuevo pago.
+                          </p>
                         </div>
                       )}
                     </div>

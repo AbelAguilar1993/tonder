@@ -83,7 +83,6 @@ export async function handleCharge(request, env, user) {
       200,
     )
   } catch (error) {
-    console.error("Error charging payment:", error);
     return createResponse(
       { error: "Internal server error", message: error.message },
       500,

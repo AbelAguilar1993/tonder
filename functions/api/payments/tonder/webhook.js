@@ -4,12 +4,10 @@ async function handleCreditsPurchaseNotification(env, data, user_id, metadata) {
   const invoiceId = metadata.invoice_id;
 
   if (!invoiceId) {
-    console.error("Missing invoice_id for credits purchase");
     return createResponse({ success: false, error: "Missing invoice_id" }, 400);
   }
 
   if (!user_id) {
-    console.error("Missing user_id for credits purchase");
     return createResponse({ success: false, error: "Missing user_id" }, 400);
   }
 
@@ -18,12 +16,10 @@ async function handleCreditsPurchaseNotification(env, data, user_id, metadata) {
     .first();
 
   if (!invoice) {
-    console.error("Invoice not found:", invoiceId);
     return createResponse({ success: false, error: "Invoice not found" }, 404);
   }
 
   if (invoice.status === "paid") {
-    console.log("Invoice already marked as paid:", invoiceId);
     return createResponse({ success: true, message: "Already processed" }, 200);
   }
 
@@ -73,10 +69,6 @@ async function handleCreditsPurchaseNotification(env, data, user_id, metadata) {
     )
     .run();
 
-  console.log(
-    `Credits purchase completed: User ${user_id} purchased ${invoice.credits_purchased} credits. New balance: ${newBalance}`,
-  );
-
   return createResponse(
     { success: true, message: "Credits added successfully" },
     200,
@@ -97,7 +89,6 @@ async function handleJobUnlockNotification(env, data, user_id, metadata) {
   }
 
   if (!user_id) {
-    console.error("Missing user_id for job unlock");
     return createResponse({ success: false, error: "Missing user_id" }, 400);
   }
 
@@ -124,10 +115,6 @@ async function handleJobUnlockNotification(env, data, user_id, metadata) {
   )
     .bind(user_id, job_id, contact_id, now, now, now, presetChipsJson)
     .run();
-
-  console.log(
-    `Job unlocked: User ${user_id} unlocked job ${job_id}, contact ${contact_id}`,
-  );
 
   return createResponse(
     { success: true, message: "Job unlocked successfully" },
@@ -172,7 +159,6 @@ export async function handleWebhook(request, env) {
     );
 
     if (!isValid) {
-      console.error("Invalid webhook signature");
       return createResponse({ error: "Invalid signature" }, 401);
     }
 
@@ -249,7 +235,6 @@ export async function handleWebhook(request, env) {
 
     return createResponse({ success: true }, 200);
   } catch (error) {
-    console.error("Error processing webhook:", error);
     return createResponse(
       { error: "Internal server error", message: error.message },
       500,
