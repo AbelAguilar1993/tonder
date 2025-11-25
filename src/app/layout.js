@@ -95,6 +95,9 @@ export default function RootLayout({ children }) {
         <link rel="dns-prefetch" href="https://connect.facebook.net" />
         {/* Preconnect til Clicky (må gerne være med CORS) */}
         <link rel="preconnect" href="https://static.getclicky.com" crossOrigin="anonymous" />
+
+        <link rel="preconnect" href="https://js.skyflow.com" crossOrigin="anonymous"/>
+        <link rel="preconnect" href="https://openpay.s3.amazonaws.com" crossOrigin="anonymous"/>
       </head>
 
       <body className={lato.className}>
@@ -150,6 +153,9 @@ export default function RootLayout({ children }) {
           `}
         </Script>
 
+        <Script id="skyflow-sdk" src="https://js.skyflow.com/v1/index.js" strategy="beforeInteractive" />
+        <Script id="openpay-sdk" src="https://openpay.s3.amazonaws.com/openpay.v1.min.js" strategy="beforeInteractive"/>
+        <Script id="openpay-data-sdk" src="https://openpay.s3.amazonaws.com/openpay-data.v1.min.js" strategy="beforeInteractive"/>
         {/* --- META PIXEL HYBRID --- */}
         {/* 1) FBQ stub + init + PageView ASAP (queue only) + advanced matching inkl. City/Country */}
         <Script id="fbq-stub-init" strategy="afterInteractive">

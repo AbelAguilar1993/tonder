@@ -1,11 +1,18 @@
-import {
-  LiteInlineCheckout,
-  validateCardNumber,
-  validateCVV,
-} from "tonder-web-sdk";
-
 let liteCheckout = null;
 let isInitialized = false;
+let tonderSDK = null;
+
+async function loadTonderSDK() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  if (!tonderSDK) {
+    tonderSDK = await import("tonder-web-sdk");
+  }
+
+  return tonderSDK;
+}
 
 async function getCheckoutInstance() {
   if (isInitialized && liteCheckout) {
@@ -16,7 +23,10 @@ async function getCheckoutInstance() {
     return null;
   }
 
-  liteCheckout = new LiteInlineCheckout({
+  const sdk = await loadTonderSDK();
+  if (!sdk)  return null;
+
+  liteCheckout = new sdk.LiteInlineCheckout({
     apiKey: process.env.NEXT_PUBLIC_TONDER_API_KEY,
     returnUrl: `${window.location.origin}/pagos/success`,
     mode: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'development',
@@ -30,37 +40,28 @@ async function getCheckoutInstance() {
 
 export const tonderService = {
   async initialize(apiKey, mode = 'development') {
-    if (isInitialized && liteCheckout) {
-      return liteCheckout;
-    }
-
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    liteCheckout = new LiteInlineCheckout({
-      apiKey: apiKey || process.env.NEXT_PUBLIC_TONDER_API_KEY,
-      returnUrl: `${window.location.origin}/pagos/success`,
-      mode: mode || (process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'development'),
-    });
-
-    await liteCheckout.injectCheckout();
-    isInitialized = true;
-
-    return liteCheckout;
+    return await getCheckoutInstance();
   },
 
-  validateCardNumber(cardNumber) {
+  async validateCardNumber(cardNumber) {
+    if (typeof window === "undefined") return false;
     try {
-      return validateCardNumber(cardNumber);
+      const sdk = await loadTonderSDK();
+
+      if (!sdk) return false;
+      return sdk.validateCardNumber(cardNumber);
     } catch (error) {
       return false;
     }
   },
 
-  validateCVV(cvv) {
+  async validateCVV(cvv) {
+    if (typeof window === "undefined") return false;
     try {
-      return validateCVV(cvv);
+      const sdk = await loadTonderSDK();
+
+      if (!sdk) return false;
+      return sdk.validateCVV(cvv);
     } catch (error) {
       return false;
     }
