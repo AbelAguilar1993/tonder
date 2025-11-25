@@ -25,6 +25,7 @@ import { handleGptRequest } from "./api/gpt.js";
 import { handleContactRequest } from "./api/contact.js";
 import { handleSupportRequest } from "./api/support.js";
 import { handleDLocalGoRequest } from "./api/payments/d_local_go/index.js";
+import { handleTonderRequest } from "./api/payments/tonder/index.js";
 import { handleCreditsRequest } from "./api/credits/index.js";
 import { handleMessagesRequest } from "./api/messages/index.js";
 import { handleCORS, createResponse } from "./utils/cors.js";
@@ -56,6 +57,8 @@ export default {
           return await handleContactsRequest(request, env, user);
         if (path.startsWith("/api/payments/d_local_go"))
           return await handleDLocalGoRequest(request, env, user);
+        if (path.startsWith("/api/payments/tonder"))
+          return await handleTonderRequest(request, env, user);
         if (path.startsWith("/api/contact"))
           return await handleContactRequest(request, env);
         if (path.startsWith("/api/support"))
