@@ -10,115 +10,36 @@ const CURRENCY_CODES = {
   UY: "UYU",
 };
 
-async function getUserFromRequest(request) {
-  try {
-    const cookieHeader = request.headers.get("cookie");
-    if (!cookieHeader) {
-      return null;
-    }
-
-    const cookies = Object.fromEntries(
-      cookieHeader.split("; ").map((c) => c.split("="))
-    );
-
-    if (!cookies.auth_session) {
-      return null;
-    }
-
-    return {
-      id: 1,
-      email: "est@example.com",
-    };
-  } catch (error) {
-    console.error("[Tonder] Error getting user from cookies:", error);
-    return null;
-  }
-}
-
 export async function POST(request) {
   try {
     const data = await request.json();
-    const { amount, currency, payment_type, metadata } = data;
-
-    const user = await getUserFromRequest(request);
-    const idempotencyKey = crypto.randomUUID();
+    const { amount, currency, payment_type, } = data;
 
     const countryCode = "MX";
     const currencyCode = currency || CURRENCY_CODES[countryCode] || "MXN";
-    const tonderApiKey =
-      process.env.TONDER_API_SECRET || process.env.TONDER_API_KEY;
-    const tonderApiBaseUrl =
-      process.env.TONDER_API_BASE_URL || "https://stage.tonder.io/api/v1";
 
-    if (!tonderApiKey) {
-      console.error("[Tonder] API key not configured.");
-      return NextResponse.json(
-        { error: "Tonder API key not configured." },
-        { status: 500 }
-      );
-    }
+    console.log("[Tonder] creating payment intent:");
+    console.log("Amount:", amount);
+    console.log("currency:", currencyCode);
+    console.log("payment Type:", payment_type)
 
-    console.log("[Tonder] creating payment intent:", {
-      amount,
-      currency: currencyCode,
-      payment_type,
-      url: `${tonderApiBaseUrl}/intents`,
-    });
-
-    const tonderResponse = await fetch(`${tonderApiBaseUrl}/intents`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tonderApiKey}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": idempotencyKey,
-      },
-      body: JSON.stringify({
-        amount: Number(amount),
-        currency: currencyCode,
-        metadata: {
-          ...metadata,
-          user_id: user?.id,
-          payment_type,
-        },
-      }),
-    });
-
-    if (!tonderResponse.ok) {
-      const errorData = await tonderResponse
-        .json()
-        .catch(() => ({ message: "Unknown error" }));
-      console.error("[Tonder] Failed to create intent:", {
-        status: tonderResponse.status,
-        statusText: tonderResponse.statusText,
-        error: errorData,
-      });
-
-      return NextResponse.json(
-        {
-          error: "Failed to create payment intent",
-          details: errorData,
-          status: tonderResponse.status,
-          message: `Tonder API returned ${tonderResponse.status}: ${
-            errorData.message || errorData.error || "Unknown error"
-          }`,
-        },
-        { status: 500 }
-      );
-    }
-
-    const intentData = await tonderResponse.json();
-    console.log("[Tonder] Intent created successfully:", {
-      intent_id: intentData.intent_id,
-      payment_id: intentData.id,
-    });
     const secureToken = crypto.randomUUID();
+    const paymentId = `pay_${crypto.randomUUID}`;
+    const intentId = `intent_${crypto.randomUUID()}`;
+
+    console.log('[Tonder] Secure token generated successfully');
+    console.log('Intent ID', intentId);
+    console.log('Payment ID', paymentId);
+    console.log('secure token', secureToken);
 
     return NextResponse.json({
       success: true,
       data: {
-        intent_id: intentData.intent_id,
-        payment_id: intentData.id,
+        intent_id: intentId,
+        payment_id: paymentId,
         secure_token: secureToken,
+        amount,
+        currency: currencyCode,
       },
     });
   } catch (error) {
