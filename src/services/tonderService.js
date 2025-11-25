@@ -1,5 +1,3 @@
-import { data } from "autoprefixer";
-import { resolve } from "styled-jsx/css";
 import {
   LiteInlineCheckout,
   validateCardNumber,

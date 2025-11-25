@@ -541,6 +541,11 @@ const baseState = {
   step2Checks: [],
   showManualOpen: false,
   manualUrl: "",
+  paymentStatus: 'idel',
+  paymentId: null,
+  intentId: null,
+  secureToken: null,
+  pollingInterval: null,
 };
 
 function createInitialState({ authed, user }) {
@@ -579,6 +584,50 @@ function applyNowReducer(state, action) {
           ...state.validationErrors,
           ...action.payload,
         },
+      };
+
+    case "PAYMENT_PENDING":
+      return {
+        ...state,
+        paymentStatus: 'pending',
+        paymentId: action.payload.paymentId,
+        intentId: action.payload.intentId,
+        secureToken: action.payload.secureToken || state.secureToken,
+        isLoading: false,
+      };
+    
+    case "PAYMENT_PROCESSING":
+      return {
+        ...state,
+        paymentStatus: 'processing',
+        isLoading: true,
+      };
+    
+    case "PAYMENT_SUCCEEDED":
+      return {
+        ...state,
+        paymentStatus: 'succeeded',
+        isLoading: false,
+      };
+ 
+    case "PAYMENT_FAILED":
+      return {
+        ...state,
+        paymentStatus: 'falied',
+        isLoading: false,
+      };
+
+    case "PAYMENT_EXPIRED":
+      return {
+        ...state,
+        paymentStatus: 'expired',
+        isLoading: false,
+      };
+
+    case "SET_POLLING_INTERVAL":
+      return {
+        ...state,
+        pollingInterval: action.payload,
       };
 
     default:
@@ -629,6 +678,11 @@ const ApplyNowModal = ({
     step2Checks, // eslint-disable-line
     showManualOpen,
     manualUrl,
+    paymentStatus,
+    paymentId,
+    intentId,
+    secureToken,
+    pollingInterval
   } = state;
 
   const scrollerRef = useRef(null);
@@ -654,6 +708,23 @@ const ApplyNowModal = ({
   };
 
   const REDIRECT_FLAG = "es_checkout_redirect_v1";
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isOpen) {
+      tonderService.initialize(
+        process.env.NEXT_PUBLIC_TONDER_API_KEY,
+        process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production': 'development'
+      );
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    return() => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    }
+  }, [pollingInterval])
 
   // Hooks
   useAutoGrow(messageTextareaRef, messageText, {
@@ -1164,6 +1235,46 @@ const ApplyNowModal = ({
     }
   };
 
+  const startPaymentPolling = (paymentId) => {
+    const interval = setInterval(async () => {
+      try {
+        const statusResponse = await tonderService.getStatus(paymentId);
+
+        if (statusResponse.success && statusResponse.data) {
+          const status = statusResponse.data.status;
+
+          if (status === 'succeeded') {
+            clearInterval(interval);
+            dispatch({ type: 'PAYMENT_SUCCEEDED' });
+            showSuccess("¡Pago confirmado! Redirigiendo...");
+
+            setTimeout(() => {
+              if (authed) {
+                router.push('/panel');
+              } else {
+                router.push('/pagos/success?redirect=panel');
+              }
+            }, 1500);
+          } else if (status === "failed" || status === 'expired') {
+            clearInterval(interval);
+            dispatch({
+              type: status === 'expired' ? 'PAYMENT_EXPIRED' : 'PAYMENT_FAILED'
+            });
+            showError(status === 'expired' ? "El pago expiró. Por favor, intenta de nuevo." : "El pago falló. Por favor, intenta de nuevo.");
+          }
+        }
+      } catch (error) {
+        console.error('Polling error:', error)
+      }
+    }, 5000);
+
+    dispatch({ type: 'SET_POLLING_INTERVAL', payload: interval });
+
+    setTimeout(() => {
+      clearInterval(interval);
+    }, 300000);
+  };
+
   const startCheckout = async (methodId) => {
     if (isBusy) return;
     if (!job?.id || !selectedContact?.id) {
@@ -1184,6 +1295,7 @@ const ApplyNowModal = ({
         isLoading: true,
         showManualOpen: false,
         manualUrl: "",
+        paymentStatus: 'processing',
       },
     });
 
@@ -1210,55 +1322,99 @@ const ApplyNowModal = ({
 
       trackGoal(769);
 
-      const payer = {
-        name: formData.fullName.trim(),
-        email: formData.email.trim(),
-        phone: payerPhone.trim(),
-      };
+      // const payer = {
+      //   name: formData.fullName.trim(),
+      //   email: formData.email.trim(),
+      //   phone: payerPhone.trim(),
+      // };
 
-      const extraPayload = {
-        ...(extras || {}),
-        message_text: (messageText || "").trim(),
-        payment_method: methodId || "card",
-      };
-
-      const response = await paymentsService.createCheckout({
-        job_id: job.id,
-        contact_id: selectedContact.id,
-        extras: extraPayload,
-        email: payer.email,
-        payer,
-        source: "step3-inline",
-        message: (messageText || "").trim(),
-        method: methodId || "card",
+      const intentResponse = await tonderService.createIntent({
+        amount: 79,
+        currency: 'mxn',
+        payment_type: 'job_unlock',
+        metadata: {
+          job_id: job.id,
+          contact_id: selectedContact.id,
+          extras: extras || {},
+          message_text: (messageText || "").trim(),
+          payment_method: methodId || 'card',
+          email: formData.email.trim(),
+          payer: {
+            name: formData.fullName.trim(),
+            email: formData.email.trim(),
+            phone: payerPhone.toString(),
+          },
+        },
       });
 
-      if (response?.success && response?.data?.redirect_url) {
+      // const extraPayload = {
+      //   ...(extras || {}),
+      //   message_text: (messageText || "").trim(),
+      //   payment_method: methodId || "card",
+      // };
+
+      if (!intentResponse.success) {
+        throw new Error(intentResponse.error || 'Failed to create payment intent');
+      }
+
+      const {intent_id, payment_id, secure_token} = intentResponse.data;
+
+      // const response = await paymentsService.createCheckout({
+      //   job_id: job.id,
+      //   contact_id: selectedContact.id,
+      //   extras: extraPayload,
+      //   email: payer.email,
+      //   payer,
+      //   source: "step3-inline",
+      //   message: (messageText || "").trim(),
+      //   method: methodId || "card",
+      // });
+
+      dispatch({
+        type: "PATCH",
+        payload: {
+          intentId: intent_id,
+          paymentId: payment_id,
+          secureToken: secure_token,
+        },
+      });
+
+      // if (response?.success && response?.data?.redirect_url) {
+      //   dispatch({
+      //     type: "PATCH",
+      //     payload: {
+      //       manualUrl: response.data.redirect_url,
+      //     },
+      //   });
+      //   setTimeout(() => {
+      //     dispatch({
+      //       type: "PATCH",
+      //       payload: { showManualOpen: true },
+      //     });
+      //   }, 900);
+
+      //   try {
+      //     sessionStorage.setItem(REDIRECT_FLAG, "1");
+      //     localStorage.removeItem(draftKey);
+      //     localStorage.removeItem(step2Key);
+      //   } catch {}
+      //   window.location.assign(response.data.redirect_url);
+      // } else {
+      //   dispatch({ type: "PATCH", payload: { isLoading: false } });
+      //   showError(response?.error || "No se pudo iniciar el pago.");
+      // }
+
+      if (methodId === 'card') {
         dispatch({
           type: "PATCH",
           payload: {
-            manualUrl: response.data.redirect_url,
+            paymentStatus: 'pending',
+            isLoading: false,
           },
         });
-        setTimeout(() => {
-          dispatch({
-            type: "PATCH",
-            payload: { showManualOpen: true },
-          });
-        }, 900);
-
-        try {
-          sessionStorage.setItem(REDIRECT_FLAG, "1");
-          localStorage.removeItem(draftKey);
-          localStorage.removeItem(step2Key);
-        } catch {}
-        window.location.assign(response.data.redirect_url);
-      } else {
-        dispatch({ type: "PATCH", payload: { isLoading: false } });
-        showError(response?.error || "No se pudo iniciar el pago.");
-      }
+      } 
     } catch (err) {
-      dispatch({ type: "PATCH", payload: { isLoading: false } });
+      dispatch({ type: "PAYMENT_FAILED" });
       showError(err?.message || "Error de pago — intenta de nuevo.");
     }
   };
@@ -2494,7 +2650,59 @@ const ApplyNowModal = ({
                             });
                             trackGoal(766);
                           } catch {}
-                          await startCheckoutWithMethod("card");
+                          // await startCheckoutWithMethod("card");
+
+                          const cardNumberInput = document.getElementById('card-number-input');
+                          const cardExpiryInput = document.getElementById('card-expiry-input');
+                          const cardCvvInput = document.getElementById('card-cvv-input');
+                          const cardNameInput = document.getElementById('card-name-input');
+
+                          if (!cardNameInput?.value || !cardExpiryInput?.value || !cardCvvInput?.value || !cardNameInput?.value) {
+                            showError("Por favor, completa todos los campos de la tarjeta");
+
+                            return;
+                          }
+
+                          const [expMonth, expYear] = cardExpiryInput.value.split("/");
+                          const fullYear = "20" + expYear;
+
+                          const cardNumber = cardNumberInput.value.replace(/\s/g, "");
+
+                          if (!tonderService.validateCardNumber(cardNumber)) {
+                            showError("Número de tarjeta inválido");
+
+                            return;
+                          }
+
+                          if (!tonderService.validateCVV(cardCvvInput.value)) {
+                            showError("CVV inválido");
+                            return;
+                          }
+
+                          let currentIntentId = intentId;
+                          let currentSecureToken = secureToken;
+
+                          if (!currentIntentId) {
+                            await startCheckout('card');
+                            await new Promise(resolve => setTimeout(resolve, 500));
+
+                            const updatedState = state;
+
+                            currentIntentId = updatedState.intentId;
+                            currentSecureToken = updatedState.secureToken;
+
+                            if (!currentIntentId) {
+                              showError("Error: No se pudo crear el intento de pago. Intenta de nuevo.");
+                              return;
+                            }
+                          }
+
+                          dispatch({ type: 'PAYMENT_PROCESSING' });
+                          
+                          try {}catch (error) {
+                            dispatch({ type: 'PAYMENT_FAILED' });
+                            showError(error.message || "Error al procesar el pago.");
+                          }
                         }}
                         onConfirmAlt={async (m) => {
                           try {
@@ -2513,6 +2721,30 @@ const ApplyNowModal = ({
                             Abrir pago manualmente
                           </a>
                         </p>
+                      )}
+
+                      {paymentStatus === 'pending' && (
+                        <div className="mt-4 p-4 bg-yellow-50 border"></div>
+                      )}
+
+                      {paymentStatus === 'succeeded' && (
+                        <div>
+                          <p>
+                            ¡Pago confirmado! Redirigiendo...
+                          </p>
+                        </div>
+                      )}
+                      
+                      {paymentStatus === 'failed' && (
+                        <div>
+                          <p>El pago falló. Por favor, intenta de nuevo.</p>
+                        </div>
+                      )}
+                      
+                      {paymentStatus === 'expired' && (
+                        <div>
+                          <p>El pago expiró. Por favor, genera un nuevo pago.</p>
+                        </div>
                       )}
                     </div>
                   )}
