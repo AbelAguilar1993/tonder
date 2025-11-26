@@ -1288,17 +1288,17 @@ const ApplyNowModal = ({
   };
 
   const startCheckout = async (methodId) => {
-    if (isBusy) return;
+    if (isBusy) return null;
     if (!job?.id || !selectedContact?.id) {
       showError("Falta información del empleo/contacto");
-      return;
+      return null;
     }
     if (!validatePayerStep()) {
-      return;
+      return null;
     }
     if (!validateMessageStep()) {
       goToStep(1);
-      return;
+      return null;
     }
 
     dispatch({
@@ -1376,6 +1376,8 @@ const ApplyNowModal = ({
             isLoading: false,
           },
         });
+
+        return {intent_id, payment_id, secure_token}
       } else if (methodId === "spei") {
         const chargeResponse = await tonderService.charge({
           intent_id: intent_id,
@@ -1396,6 +1398,7 @@ const ApplyNowModal = ({
           },
         });
 
+        return { intent_id, payment_id, secure_token }
         startPaymentPolling(payment_id)
       } else if (methodId === "oxxo") {
         const chargeResponse = await tonderService.charge({
@@ -1418,6 +1421,7 @@ const ApplyNowModal = ({
           },
         });
 
+        return { intent_id, payment_id, secure_token }
         startPaymentPolling(payment_id);
       }
     } catch (err) {
@@ -1425,6 +1429,7 @@ const ApplyNowModal = ({
         type: "PAYMENT_FAILED"
       });
       showError(err?.message || "Error de pago — intenta de nuevo.");
+      return null;
     }
   };
 
@@ -2675,12 +2680,14 @@ const ApplyNowModal = ({
 
                           const cardNumber = cardNumberInput.value.replace(/\s/g, "");
                           
-                          if (!tonderService.validateCardNumber(cardNumber)) {
+                          const isCardValid = await tonderService.validateCardNumber(cardNumber);;
+                          if (!isCardValid) {
                             showError("Número de tarjeta inválido");
                             return;
                           }
 
-                          if (!tonderService.validateCVV(cardCvvInput.value)) {
+                          const isCvvValid = await tonderService.validateCVV(cardCvvInput.value);
+                          if (!isCvvValid) {
                             showError("CVV inválido");
                             return;
                           }
@@ -2689,17 +2696,14 @@ const ApplyNowModal = ({
                           let currentSecureToken = secureToken;
                           
                           if (!currentIntentId) {
-                            await startCheckout("card");
-                            await new Promise(resolve => setTimeout(resolve, 500));
-
-                            const updatedState = state;
-                            currentIntentId = updatedState.intentId;
-                            currentSecureToken = updatedState.secureToken;
+                            const intentData = await startCheckout("card");
                             
-                            if (!currentIntentId) {
+                            if (!intentData) {
                               showError("Error: No se pudo crear el intento de pago. Intenta de nuevo.");
                               return;
                             }
+                            currentIntentId = intentData.intent_id;
+                            currentSecureToken = intentData.secure_token; 
                           }
 
                           dispatch({ type: 'PAYMENT_PROCESSING' });

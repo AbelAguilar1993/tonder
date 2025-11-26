@@ -24,7 +24,7 @@ export async function POST(request) {
     console.log("payment Type:", payment_type)
 
     const secureToken = crypto.randomUUID();
-    const paymentId = `pay_${crypto.randomUUID}`;
+    const paymentId = `pay_${crypto.randomUUID()}`;
     const intentId = `intent_${crypto.randomUUID()}`;
 
     console.log('[Tonder] Secure token generated successfully');
