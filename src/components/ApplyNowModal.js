@@ -1368,8 +1368,6 @@ const ApplyNowModal = ({
         },
       });
 
-      // Simply return the intent data
-      // The actual payment will be processed by startCheckoutWithMethod
       dispatch({
         type: "PATCH",
         payload: {
@@ -2737,7 +2735,7 @@ const ApplyNowModal = ({
                             }
                             currentIntentId = intentData.intent_id;
                             currentSecureToken = intentData.secure_token;
-                            currentOrderId = intentData.order_id; // Get order_id from backend
+                            currentOrderId = intentData.order_id;
                           }
 
                           dispatch({ type: 'PAYMENT_PROCESSING' });

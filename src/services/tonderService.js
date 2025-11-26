@@ -156,7 +156,7 @@ export const tonderService = {
       },
       currency: "MXN",
       metadata: {
-        order_id: orderId, // Use order_id from backend
+        order_id: orderId,
         payment_method: "card",
         payment_type: formData.paymentType || "job_unlock"
       },

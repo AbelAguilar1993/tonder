@@ -168,27 +168,23 @@ export async function handleWebhook(request, env) {
       }
     }
 
-    // Determine webhook structure (Card vs APM)
     const isCardWebhook = payload.card_brand !== undefined;
     const isAPMWebhook = payload.type === "apm" || payload.data?.payment_method_name !== undefined;
 
-    // Extract common fields
     let eventId, transactionRef, status, metadata, paymentMethodName;
 
     if (isAPMWebhook && payload.data) {
-      // APM Webhook structure (OXXO, SPEI, Mercado Pago, etc.)
       eventId = payload.data.id;
       transactionRef = payload.data.transaction_reference;
-      status = payload.data.transaction_status; // "Success", "Pending", "Failed"
+      status = payload.data.transaction_status;
       metadata = payload.data.metadata || {};
-      paymentMethodName = payload.data.payment_method_name; // "oxxopay", "spei", etc.
+      paymentMethodName = payload.data.payment_method_name;
     } else {
-      // Card Webhook structure
       eventId = payload.transaction_reference;
       transactionRef = payload.transaction_reference;
-      status = payload.status; // "Success", "Failed"
+      status = payload.status;
       metadata = payload.metadata || {};
-      paymentMethodName = payload.card_brand?.toLowerCase(); // "visa", "mastercard"
+      paymentMethodName = payload.card_brand?.toLowerCase();
     }
 
     console.log('[Webhook] Parsed data:', {
@@ -199,7 +195,6 @@ export async function handleWebhook(request, env) {
       metadata
     });
 
-    // Check for duplicate processing
     const existingEvent = await env.DB.prepare(
       "SELECT * FROM tonder_webhook_events WHERE event_id = ?",
     )
@@ -214,7 +209,6 @@ export async function handleWebhook(request, env) {
       );
     }
 
-    // Store webhook event for audit trail
     await env.DB.prepare(
       `INSERT INTO tonder_webhook_events (event_id, payment_id, event_type, payload)
       VALUES (?, ?, ?, ?)`,
@@ -227,10 +221,8 @@ export async function handleWebhook(request, env) {
       )
       .run();
 
-    // Find payment in database by matching transaction_reference or order_id from metadata
     let payment = null;
     
-    // Try to match by order_id in metadata (most reliable)
     if (metadata.order_id) {
       const payments = await env.DB.prepare(
         `SELECT * FROM tonder_payments WHERE json_extract(metadata, '$.order_id') = ?`
@@ -242,7 +234,6 @@ export async function handleWebhook(request, env) {
       console.log('[Webhook] Found payment by order_id:', payment?.payment_id);
     }
 
-    // Fallback: try to match by transaction_reference stored in payment_id or intent_id
     if (!payment && transactionRef) {
       payment = await env.DB.prepare(
         "SELECT * FROM tonder_payments WHERE payment_id = ? OR intent_id = ?",
@@ -255,7 +246,6 @@ export async function handleWebhook(request, env) {
 
     if (!payment) {
       console.error('[Webhook] Payment not found for transaction:', transactionRef);
-      // Still mark webhook as processed to avoid retries
       await env.DB.prepare(
         `UPDATE tonder_webhook_events SET processed = 1 WHERE event_id = ?`,
       )
@@ -268,13 +258,11 @@ export async function handleWebhook(request, env) {
       );
     }
 
-    // Normalize status to database format
     const normalizedStatus = status === "Success" ? "succeeded" : 
                              status === "Pending" ? "pending" : 
                              status === "Failed" ? "failed" : 
                              status.toLowerCase();
 
-    // Update payment status in database
     const now = new Date().toISOString();
     await env.DB.prepare(
       `UPDATE tonder_payments 
@@ -296,7 +284,6 @@ export async function handleWebhook(request, env) {
       payment_method: paymentMethodName
     });
 
-    // Trigger business logic only for successful payments
     if (normalizedStatus === "succeeded") {
       const paymentMetadata = JSON.parse(payment.metadata || "{}");
 
@@ -319,7 +306,6 @@ export async function handleWebhook(request, env) {
       }
     }
 
-    // Mark webhook as processed
     await env.DB.prepare(
       `UPDATE tonder_webhook_events SET processed = 1 WHERE event_id = ?`,
     )

@@ -12,14 +12,12 @@ export async function handleCreateIntent(request, env, user) {
     const intentId = `intent_${crypto.randomUUID()}`;
     const idempotencyKey = crypto.randomUUID();
     
-    // Generate order_id that will be used in payment and webhook
     const orderId = `${payment_type?.toUpperCase() || 'ORDER'}-${Date.now()}`;
 
     const { _, countryName } = getLocationDetails(request);
     const countryCode = getCountryCode(countryName);
     const currencyCode = currency || CURRENCY_CODES[countryCode] || "MXN";
 
-    // Merge order_id into metadata
     const paymentMetadata = {
       ...(metadata || {}),
       order_id: orderId
