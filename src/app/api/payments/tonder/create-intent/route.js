@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
 const CURRENCY_CODES = {
   AR: "ARS",
@@ -13,24 +13,24 @@ const CURRENCY_CODES = {
 export async function POST(request) {
   try {
     const data = await request.json();
-    const { amount, currency, payment_type, } = data;
+    const { amount, currency, payment_type } = data;
 
-    const countryCode = "MX";
+    const countryCode = 'MX';
     const currencyCode = currency || CURRENCY_CODES[countryCode] || "MXN";
-
-    console.log("[Tonder] creating payment intent:");
-    console.log("Amount:", amount);
-    console.log("currency:", currencyCode);
-    console.log("payment Type:", payment_type)
+    
+    console.log('[Tonder] Creating payment intent:');
+    console.log('  Amount:', amount);
+    console.log('  Currency:', currencyCode);
+    console.log('  Payment Type:', payment_type);
 
     const secureToken = crypto.randomUUID();
     const paymentId = `pay_${crypto.randomUUID()}`;
     const intentId = `intent_${crypto.randomUUID()}`;
 
-    console.log('[Tonder] Secure token generated successfully');
-    console.log('Intent ID', intentId);
-    console.log('Payment ID', paymentId);
-    console.log('secure token', secureToken);
+    console.log('[Tonder] Secure token generated successfully!');
+    console.log('  Intent ID:', intentId);
+    console.log('  Payment ID:', paymentId);
+    console.log('  Secure Token:', secureToken);
 
     return NextResponse.json({
       success: true,
@@ -43,13 +43,9 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.error("[Tonder] unexpected error:", error);
+    console.error('[Tonder] Unexpected error:', error);
     return NextResponse.json(
-      {
-        error: "Internal server error",
-        message: error.message,
-        stack: error.stack,
-      },
+      { error: "Internal server error", message: error.message, stack: error.stack },
       { status: 500 }
     );
   }
@@ -59,9 +55,9 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
 }

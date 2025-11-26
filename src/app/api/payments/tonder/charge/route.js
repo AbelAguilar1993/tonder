@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
@@ -6,8 +6,7 @@ export async function POST(request) {
     const { intent_id, method } = data;
 
     const tonderApiKey = process.env.TONDER_API_KEY;
-    const tonderApiBaseUrl =
-      process.env.TONDER_API_BASE_URL || "https://stage.tonder.io/api/v1";
+    const tonderApiBaseUrl = process.env.TONDER_API_BASE_URL || 'https://stage.tonder.io/api/v1';
 
     if (!tonderApiKey) {
       return NextResponse.json(
@@ -21,18 +20,20 @@ export async function POST(request) {
       method,
     };
 
-    const tonderResponse = await fetch(`${tonderApiBaseUrl}/charges`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tonderApiKey}`,
-        "Content-Type": "application/json",
+    const tonderResponse = await fetch(
+      `${tonderApiBaseUrl}/charges`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tonderApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(chargePayload),
       },
-      body: JSON.stringify(chargePayload),
-    });
+    );
 
     if (!tonderResponse.ok) {
       const errorData = await tonderResponse.json();
-
       return NextResponse.json(
         { error: "Payment failed", details: errorData },
         { status: 400 }
@@ -57,9 +58,9 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
 }

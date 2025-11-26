@@ -6,11 +6,11 @@ async function loadTonderSDK() {
   if (typeof window === 'undefined') {
     return null;
   }
-
+  
   if (!tonderSDK) {
     tonderSDK = await import("tonder-web-sdk");
   }
-
+  
   return tonderSDK;
 }
 
@@ -24,13 +24,15 @@ async function getCheckoutInstance() {
   }
 
   const sdk = await loadTonderSDK();
-  if (!sdk)  return null;
+  if (!sdk) return null;
 
   liteCheckout = new sdk.LiteInlineCheckout({
     apiKey: process.env.NEXT_PUBLIC_TONDER_API_KEY,
     returnUrl: `${window.location.origin}/pagos/success`,
     mode: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'production' : 'stage',
-    baseUrl: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' ? 'https://api.tonder.io' : 'https://stage.tonder.io',
+    baseUrl: process.env.NEXT_PUBLIC_TONDER_ENV === 'production' 
+      ? 'https://api.tonder.io' 
+      : 'https://stage.tonder.io',
   });
 
   await liteCheckout.injectCheckout();
@@ -45,10 +47,9 @@ export const tonderService = {
   },
 
   async validateCardNumber(cardNumber) {
-    if (typeof window === "undefined") return false;
+    if (typeof window === 'undefined') return false;
     try {
       const sdk = await loadTonderSDK();
-
       if (!sdk) return false;
       return sdk.validateCardNumber(cardNumber);
     } catch (error) {
@@ -57,10 +58,9 @@ export const tonderService = {
   },
 
   async validateCVV(cvv) {
-    if (typeof window === "undefined") return false;
+    if (typeof window === 'undefined') return false;
     try {
       const sdk = await loadTonderSDK();
-
       if (!sdk) return false;
       return sdk.validateCVV(cvv);
     } catch (error) {

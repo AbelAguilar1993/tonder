@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
 async function verifySignature(payload, signature, secret) {
   const payloadString = JSON.stringify(payload);
-
+  
   const encoder = new TextEncoder();
   const key = encoder.encode(secret);
   const data = encoder.encode(payloadString);
@@ -13,15 +13,15 @@ async function verifySignature(payload, signature, secret) {
       key,
       { name: "HMAC", hash: "SHA-256" },
       false,
-      ["sign"]
+      ["sign"],
     );
 
     const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, data);
-    const hashArrayy = Array.from(new Uint8Array(signatureBuffer));
-    const hashHex = hashArrayy
+    const hashArray = Array.from(new Uint8Array(signatureBuffer));
+    const hashHex = hashArray
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
-
+    
     return `sha256=${hashHex}` === signature;
   } catch (error) {
     return false;
@@ -36,41 +36,40 @@ export async function POST(request) {
     const webhookSecret = process.env.TONDER_WEBHOOK_SECRET;
 
     if (!webhookSecret) {
-      return NextResponse.json({
-        success: true,
-        message: "Webhook received.",
+      return NextResponse.json({ 
+        success: true, 
+        message: "Webhook received (signature verification skipped in dev)" 
       });
     }
-
 
     const isValid = await verifySignature(payload, signature, webhookSecret);
 
     if (!isValid) {
-        return NextResponse.json(
-            { error: "Invalid signature"},
-            { status: 401 }
-        )
+      return NextResponse.json(
+        { error: "Invalid signature" },
+        { status: 401 }
+      );
     }
 
-    return NextResponse.json({
-        success: true,
-        message: "Webhook received and processed"
-    })
+    return NextResponse.json({ 
+      success: true,
+      message: "Webhook received and processed"
+    });
   } catch (error) {
     return NextResponse.json(
-      { error: "Interrrnal server error", message: error.message },
+      { error: "Internal server error", message: error.message },
       { status: 500 }
     );
   }
 }
 
 export async function OPTIONS() {
-    return new NextResponse(null, {
-        status: 204,
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tonder-signature'
-       }
-    })
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tonder-signature',
+    },
+  });
 }
