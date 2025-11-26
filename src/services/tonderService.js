@@ -126,7 +126,7 @@ export const tonderService = {
     console.log('Checkout configured');
   },
 
-  buildCardPaymentData(formData, cardData, amount) {
+  buildCardPaymentData(formData, cardData, amount, orderId) {
     const { firstName, lastName, email, phone, country } = formData;
     
     return {
@@ -156,7 +156,7 @@ export const tonderService = {
       },
       currency: "MXN",
       metadata: {
-        order_id: `CARD-${Date.now()}`,
+        order_id: orderId, // Use order_id from backend
         payment_method: "card",
         payment_type: formData.paymentType || "job_unlock"
       },
@@ -178,7 +178,7 @@ export const tonderService = {
     const paymentId = Math.floor(Math.random() * 90000) + 10000;
     const orderReference = "ORDER-" + Math.random().toString(36).substr(2, 9).toUpperCase();
     const customerId = Math.random().toString(36).substr(2, 9);
-    const businessId = parseInt(process.env.NEXT_PUBLIC_TONDER_BUSINESS_ID || "21");
+    const businessId = parseInt(process.env.NEXT_PUBLIC_TONDER_BUSINESS_ID || "168");
 
     const normalizedMethod = paymentMethod === 'spei' ? 'Spei' : 
                             paymentMethod === 'oxxo' ? 'oxxopay' : 

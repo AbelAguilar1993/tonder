@@ -1368,62 +1368,17 @@ const ApplyNowModal = ({
         },
       });
 
-      if (methodId === "card") {
-        dispatch({
-          type: "PATCH",
-          payload: {
-            paymentStatus: 'pending',
-            isLoading: false,
-          },
-        });
+      // Simply return the intent data
+      // The actual payment will be processed by startCheckoutWithMethod
+      dispatch({
+        type: "PATCH",
+        payload: {
+          paymentStatus: 'pending',
+          isLoading: false,
+        },
+      });
 
-        return {intent_id, payment_id, secure_token}
-      } else if (methodId === "spei") {
-        const chargeResponse = await tonderService.charge({
-          intent_id: intent_id,
-          method: 'spei',
-        });
-
-        if (!chargeResponse.success) {
-          throw new Error(chargeResponse.error || "Failed to generate SPEI reference");
-        }
-
-        dispatch({
-          type: "PAYMENT_PEEENDING",
-          payload: {
-            paymentId: payment_id,
-            intentId: intent_id,
-            secureToken: secure_token,
-            speiReference: chargeResponse.data.reference,
-          },
-        });
-
-        return { intent_id, payment_id, secure_token }
-        startPaymentPolling(payment_id)
-      } else if (methodId === "oxxo") {
-        const chargeResponse = await tonderService.charge({
-          intent_id: intent_id,
-          method: 'oxxo',
-        });
-
-        if (!chargeResponse.succeeess) {
-          throw new Error(chargeResponse.error || "Failed to generate OXXO voucher");
-        }
-
-        dispatch({
-          type: "PAYMENT_PENDING",
-          payload: {
-            paymentId: payment_id,
-            intentId: intent_id,
-            secureToken: secure_token,
-            oxxoVoucher: chargeResponse.data.voucher?.barcode,
-            oxxoExpiresAt: chargeResponse.data.voucher?.expires_at,
-          },
-        });
-
-        return { intent_id, payment_id, secure_token }
-        startPaymentPolling(payment_id);
-      }
+      return {intent_id, payment_id, secure_token, order_id: intentResponse.data.order_id};
     } catch (err) {
       dispatch({ 
         type: "PAYMENT_FAILED"
@@ -2771,6 +2726,7 @@ const ApplyNowModal = ({
 
                           let currentIntentId = intentId;
                           let currentSecureToken = secureToken;
+                          let currentOrderId = null;
                           
                           if (!currentIntentId) {
                             const intentData = await startCheckout("card");
@@ -2780,7 +2736,8 @@ const ApplyNowModal = ({
                               return;
                             }
                             currentIntentId = intentData.intent_id;
-                            currentSecureToken = intentData.secure_token; 
+                            currentSecureToken = intentData.secure_token;
+                            currentOrderId = intentData.order_id; // Get order_id from backend
                           }
 
                           dispatch({ type: 'PAYMENT_PROCESSING' });
@@ -2793,7 +2750,7 @@ const ApplyNowModal = ({
                               email: formData.email.trim(),
                             });
 
-                            console.log('[Payment] Building card payment data...');
+                            console.log('[Payment] Building card payment data with order_id:', currentOrderId);
                             const checkoutData = tonderService.buildCardPaymentData(
                               {
                                 firstName: formData.fullName.split(' ')[0] || formData.fullName,
@@ -2810,7 +2767,8 @@ const ApplyNowModal = ({
                                 expirationYear: expYear,
                                 cardholderName: cardNameInput.value || formData.fullName,
                               },
-                              79
+                              79,
+                              currentOrderId // Pass order_id from backend
                             );
 
                             console.log('[Payment] Processing card payment...');

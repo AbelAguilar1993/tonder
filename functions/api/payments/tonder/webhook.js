@@ -152,89 +152,184 @@ export async function handleWebhook(request, env) {
     const payload = await request.json();
     const signature = request.headers.get("x-tonder-signature");
 
-    const isValid = await verifySignature(
-      payload,
-      signature,
-      env.TONDER_WEBHOOK_SECRET,
-    );
+    console.log('[Webhook] Received payload:', JSON.stringify(payload, null, 2));
 
-    if (!isValid) {
-      return createResponse({ error: "Invalid signature" }, 401);
+    // Verify signature if secret is configured
+    if (env.TONDER_WEBHOOK_SECRET) {
+      const isValid = await verifySignature(
+        payload,
+        signature,
+        env.TONDER_WEBHOOK_SECRET,
+      );
+
+      if (!isValid) {
+        console.error('[Webhook] Invalid signature');
+        return createResponse({ error: "Invalid signature" }, 401);
+      }
     }
 
+    // Determine webhook structure (Card vs APM)
+    const isCardWebhook = payload.card_brand !== undefined;
+    const isAPMWebhook = payload.type === "apm" || payload.data?.payment_method_name !== undefined;
+
+    // Extract common fields
+    let eventId, transactionRef, status, metadata, paymentMethodName;
+
+    if (isAPMWebhook && payload.data) {
+      // APM Webhook structure (OXXO, SPEI, Mercado Pago, etc.)
+      eventId = payload.data.id;
+      transactionRef = payload.data.transaction_reference;
+      status = payload.data.transaction_status; // "Success", "Pending", "Failed"
+      metadata = payload.data.metadata || {};
+      paymentMethodName = payload.data.payment_method_name; // "oxxopay", "spei", etc.
+    } else {
+      // Card Webhook structure
+      eventId = payload.transaction_reference;
+      transactionRef = payload.transaction_reference;
+      status = payload.status; // "Success", "Failed"
+      metadata = payload.metadata || {};
+      paymentMethodName = payload.card_brand?.toLowerCase(); // "visa", "mastercard"
+    }
+
+    console.log('[Webhook] Parsed data:', {
+      eventId,
+      transactionRef,
+      status,
+      paymentMethodName,
+      metadata
+    });
+
+    // Check for duplicate processing
     const existingEvent = await env.DB.prepare(
       "SELECT * FROM tonder_webhook_events WHERE event_id = ?",
     )
-      .bind(payload.id)
+      .bind(eventId)
       .first();
 
     if (existingEvent?.processed) {
+      console.log('[Webhook] Already processed:', eventId);
       return createResponse(
         { success: true, message: "Already processed" },
         200,
       );
     }
 
+    // Store webhook event for audit trail
     await env.DB.prepare(
       `INSERT INTO tonder_webhook_events (event_id, payment_id, event_type, payload)
       VALUES (?, ?, ?, ?)`,
     )
       .bind(
-        payload.id,
-        payload.data.payment_id,
-        payload.type,
+        eventId,
+        transactionRef,
+        isAPMWebhook ? 'apm' : 'card',
         JSON.stringify(payload),
       )
       .run();
 
+    // Find payment in database by matching transaction_reference or order_id from metadata
+    let payment = null;
+    
+    // Try to match by order_id in metadata (most reliable)
+    if (metadata.order_id) {
+      const payments = await env.DB.prepare(
+        `SELECT * FROM tonder_payments WHERE json_extract(metadata, '$.order_id') = ?`
+      )
+        .bind(metadata.order_id)
+        .all();
+      
+      payment = payments.results?.[0];
+      console.log('[Webhook] Found payment by order_id:', payment?.payment_id);
+    }
+
+    // Fallback: try to match by transaction_reference stored in payment_id or intent_id
+    if (!payment && transactionRef) {
+      payment = await env.DB.prepare(
+        "SELECT * FROM tonder_payments WHERE payment_id = ? OR intent_id = ?",
+      )
+        .bind(transactionRef, transactionRef)
+        .first();
+      
+      console.log('[Webhook] Found payment by transaction_reference:', payment?.payment_id);
+    }
+
+    if (!payment) {
+      console.error('[Webhook] Payment not found for transaction:', transactionRef);
+      // Still mark webhook as processed to avoid retries
+      await env.DB.prepare(
+        `UPDATE tonder_webhook_events SET processed = 1 WHERE event_id = ?`,
+      )
+        .bind(eventId)
+        .run();
+      
+      return createResponse(
+        { success: true, message: "Payment not found, but webhook logged" },
+        200,
+      );
+    }
+
+    // Normalize status to database format
+    const normalizedStatus = status === "Success" ? "succeeded" : 
+                             status === "Pending" ? "pending" : 
+                             status === "Failed" ? "failed" : 
+                             status.toLowerCase();
+
+    // Update payment status in database
     const now = new Date().toISOString();
     await env.DB.prepare(
       `UPDATE tonder_payments 
-      SET status = ?, updated_at = ?, paid_at = ?
+      SET status = ?, payment_method = ?, updated_at = ?, paid_at = ?
       WHERE payment_id = ?`,
     )
       .bind(
-        payload.data.status,
+        normalizedStatus,
+        paymentMethodName || payment.payment_method,
         now,
-        payload.data.status === "succeeded" ? now : null,
-        payload.data.payment_id,
+        normalizedStatus === "succeeded" ? now : null,
+        payment.payment_id,
       )
       .run();
 
-    const payment = await env.DB.prepare(
-      "SELECT * FROM tonder_payments WHERE payment_id = ?",
-    )
-      .bind(payload.data.payment_id)
-      .first();
+    console.log('[Webhook] Updated payment status:', {
+      payment_id: payment.payment_id,
+      status: normalizedStatus,
+      payment_method: paymentMethodName
+    });
 
-    if (payment && payload.data.status === "succeeded") {
-      const metadata = JSON.parse(payment.metadata || "{}");
+    // Trigger business logic only for successful payments
+    if (normalizedStatus === "succeeded") {
+      const paymentMetadata = JSON.parse(payment.metadata || "{}");
 
       if (payment.payment_type === "job_unlock") {
-        return await handleJobUnlockNotification(
+        console.log('[Webhook] Processing job unlock...');
+        await handleJobUnlockNotification(
           env,
-          payload.data,
+          { transaction_reference: transactionRef },
           payment.user_id,
-          metadata,
+          paymentMetadata,
         );
       } else if (payment.payment_type === "credits_purchase") {
-        return await handleCreditsPurchaseNotification(
+        console.log('[Webhook] Processing credits purchase...');
+        await handleCreditsPurchaseNotification(
           env,
-          payload.data,
+          { transaction_reference: transactionRef },
           payment.user_id,
-          metadata,
+          paymentMetadata,
         );
       }
     }
 
+    // Mark webhook as processed
     await env.DB.prepare(
       `UPDATE tonder_webhook_events SET processed = 1 WHERE event_id = ?`,
     )
-      .bind(payload.id)
+      .bind(eventId)
       .run();
 
+    console.log('[Webhook] Successfully processed webhook:', eventId);
     return createResponse({ success: true }, 200);
   } catch (error) {
+    console.error('[Webhook] Error:', error);
     return createResponse(
       { error: "Internal server error", message: error.message },
       500,

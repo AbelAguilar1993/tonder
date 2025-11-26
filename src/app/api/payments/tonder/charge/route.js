@@ -3,50 +3,42 @@ import { NextResponse } from 'next/server';
 export async function POST(request) {
   try {
     const data = await request.json();
-    const { intent_id, method } = data;
+    const { payment_id, method } = data;
 
-    const tonderApiKey = process.env.TONDER_API_KEY;
-    const tonderApiBaseUrl = process.env.TONDER_API_BASE_URL || 'https://stage.tonder.io/api/v1';
+    console.log('[Tonder Charge] Processing charge for local dev:');
+    console.log('  Payment ID:', payment_id);
+    console.log('  Method:', method);
 
-    if (!tonderApiKey) {
-      return NextResponse.json(
-        { error: "Tonder API key not configured" },
-        { status: 500 }
-      );
-    }
-
-    const chargePayload = {
-      intent_id,
-      method,
+    // For local development, return mock data
+    // In production, Tonder SDK handles this directly from frontend
+    const responseData = {
+      payment_id,
+      status: 'pending',
+      payment_method: method,
     };
 
-    const tonderResponse = await fetch(
-      `${tonderApiBaseUrl}/charges`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${tonderApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(chargePayload),
-      },
-    );
-
-    if (!tonderResponse.ok) {
-      const errorData = await tonderResponse.json();
-      return NextResponse.json(
-        { error: "Payment failed", details: errorData },
-        { status: 400 }
-      );
+    if (method === "spei" || method === "Spei") {
+      responseData.reference = `SPEI${Date.now()}${Math.random().toString(36).substring(7).toUpperCase()}`;
+      responseData.instructions = "Transfer the exact amount using this reference";
+      console.log('  SPEI Reference:', responseData.reference);
     }
 
-    const chargeData = await tonderResponse.json();
+    if (method === "oxxo" || method === "oxxopay") {
+      responseData.voucher = `OXXO${Date.now()}${Math.random().toString(36).substring(7).toUpperCase()}`;
+      responseData.expires_at = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(); // 72 hours
+      responseData.instructions = "Pay at any OXXO with this voucher code";
+      console.log('  OXXO Voucher:', responseData.voucher);
+      console.log('  Expires:', responseData.expires_at);
+    }
+
+    console.log('[Tonder Charge] Mock charge created successfully');
 
     return NextResponse.json({
       success: true,
-      data: chargeData,
+      data: responseData,
     });
   } catch (error) {
+    console.error('[Tonder Charge] Error:', error);
     return NextResponse.json(
       { error: "Internal server error", message: error.message },
       { status: 500 }

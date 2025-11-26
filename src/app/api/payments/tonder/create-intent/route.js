@@ -13,23 +13,28 @@ const CURRENCY_CODES = {
 export async function POST(request) {
   try {
     const data = await request.json();
-    const { amount, currency, payment_type } = data;
+    const { amount, currency, payment_type, metadata } = data;
 
     const countryCode = 'MX';
     const currencyCode = currency || CURRENCY_CODES[countryCode] || "MXN";
-    
+
     console.log('[Tonder] Creating payment intent:');
     console.log('  Amount:', amount);
     console.log('  Currency:', currencyCode);
     console.log('  Payment Type:', payment_type);
+    console.log('  Metadata:', metadata);
 
     const secureToken = crypto.randomUUID();
     const paymentId = `pay_${crypto.randomUUID()}`;
     const intentId = `intent_${crypto.randomUUID()}`;
+    
+    // Generate order_id that will be used in payment and webhook
+    const orderId = `${payment_type?.toUpperCase() || 'ORDER'}-${Date.now()}`;
 
     console.log('[Tonder] Secure token generated successfully!');
     console.log('  Intent ID:', intentId);
     console.log('  Payment ID:', paymentId);
+    console.log('  Order ID:', orderId);
     console.log('  Secure Token:', secureToken);
 
     return NextResponse.json({
@@ -38,6 +43,7 @@ export async function POST(request) {
         intent_id: intentId,
         payment_id: paymentId,
         secure_token: secureToken,
+        order_id: orderId,
         amount,
         currency: currencyCode,
       },
