@@ -3,86 +3,75 @@ import { createResponse } from "../../../utils/cors.js";
 export async function handleCharge(request, env, user) {
   try {
     const data = await request.json();
-    const { intent_id, method } = data;
+    const { payment_id, method, customer } = data;
 
     const payment = await env.DB.prepare(
-      "SELECT * FROM tonder_payments WHERE intent_id = ?",
+      "SELECT * FROM tonder_payments WHERE payment_id = ?",
     )
-      .bind(intent_id)
+      .bind(payment_id)
       .first();
 
     if (!payment) {
-      return createResponse({ error: "Payment intent not found" }, 404);
+      return createResponse({ error: "Payment not found" }, 404);
     }
-
-    const chargePayload = {
-      intent_id,
-      method,
-    };
-
-    const tonderResponse = await fetch(
-      `${env.TONDER_API_BASE_URL}/charges`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.TONDER_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(chargePayload),
-      },
-    );
-
-    if (!tonderResponse.ok) {
-      const errorData = await tonderResponse.json();
-      return createResponse(
-        { error: "Payment failed", details: errorData },
-        400,
-      );
-    }
-
-    const chargeData = await tonderResponse.json();
 
     const now = new Date().toISOString();
-    const updateData = {
-      status: chargeData.status,
-      payment_method: method,
-      updated_at: now,
-    };
 
-    if (method === "spei" && chargeData.reference) {
-      updateData.spei_reference = chargeData.reference;
-    }
-
-    if (method === "oxxo" && chargeData.voucher) {
-      updateData.oxxo_voucher = chargeData.voucher.barcode;
-      updateData.oxxo_expires_at = chargeData.voucher.expires_at;
-    }
+    const mockReference = method === "spei" 
+      ? `SPEI${Date.now()}${Math.random().toString(36).substring(7).toUpperCase()}`
+      : null;
+    
+    const mockVoucher = method === "oxxo"
+      ? `OXXO${Date.now()}${Math.random().toString(36).substring(7).toUpperCase()}`
+      : null;
+    
+    const mockExpiresAt = method === "oxxo"
+      ? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString() // 72 hours
+      : null;
 
     await env.DB.prepare(
       `UPDATE tonder_payments 
       SET status = ?, payment_method = ?, spei_reference = ?, 
           oxxo_voucher = ?, oxxo_expires_at = ?, updated_at = ?
-      WHERE intent_id = ?`,
+      WHERE payment_id = ?`,
     )
       .bind(
-        updateData.status,
-        updateData.payment_method,
-        updateData.spei_reference || null,
-        updateData.oxxo_voucher || null,
-        updateData.oxxo_expires_at || null,
+        'pending',
+        method,
+        mockReference,
+        mockVoucher,
+        mockExpiresAt,
         now,
-        intent_id,
+        payment_id,
       )
       .run();
+
+    const responseData = {
+      payment_id,
+      status: 'pending',
+      payment_method: method,
+    };
+
+    if (method === "spei") {
+      responseData.reference = mockReference;
+      responseData.instructions = "Transfer the exact amount using this reference";
+    }
+
+    if (method === "oxxo") {
+      responseData.voucher = mockVoucher;
+      responseData.expires_at = mockExpiresAt;
+      responseData.instructions = "Pay at any OXXO with this voucher code";
+    }
 
     return createResponse(
       {
         success: true,
-        data: chargeData,
+        data: responseData,
       },
       200,
-    )
+    );
   } catch (error) {
+    console.error('[Tonder] Charge error:', error);
     return createResponse(
       { error: "Internal server error", message: error.message },
       500,

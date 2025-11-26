@@ -1437,7 +1437,85 @@ const ApplyNowModal = ({
     try {
       sessionStorage.setItem("es_method", methodId || "card");
     } catch {}
-    await startCheckout(methodId || "card");
+    
+    const intentData = await startCheckout(methodId || "card");
+    
+    if (!intentData || !intentData.intent_id) {
+      showError("Error: No se pudo crear el intento de pago.");
+      return;
+    }
+
+    if (methodId === 'spei' || methodId === 'oxxo') {
+      dispatch({ type: 'PAYMENT_PROCESSING' });
+      
+      try {
+        console.log('[Payment] Configuring checkout for APM...');
+        await tonderService.configureCheckout({
+          firstName: formData.fullName.split(' ')[0] || formData.fullName,
+          lastName: formData.fullName.split(' ').slice(1).join(' ') || formData.fullName,
+          email: formData.email.trim(),
+        });
+
+        console.log(`[Payment] Building ${methodId} payment data...`);
+        const paymentData = tonderService.buildAPMPaymentData(
+          {
+            firstName: formData.fullName.split(' ')[0] || formData.fullName,
+            lastName: formData.fullName.split(' ').slice(1).join(' ') || formData.fullName,
+            email: formData.email.trim(),
+            phone: payerPhone || '5512345678',
+            paymentType: 'job_unlock'
+          },
+          79,
+          methodId
+        );
+
+        console.log(`[Payment] Processing ${methodId} payment...`);
+        const paymentResponse = await tonderService.processPayment(paymentData);
+
+        if (!paymentResponse.success) {
+          throw new Error(paymentResponse.error || 'Payment failed');
+        }
+
+        console.log('[Payment] Payment response:', paymentResponse.data);
+
+        const result = tonderService.handlePaymentResponse(paymentResponse.data);
+
+        if (result.requiresRedirect) {
+          console.log(`[Payment] Redirecting to ${result.type} URL:`, result.url);
+          dispatch({
+            type: 'PAYMENT_PENDING',
+            payload: {
+              intentId: intentData.intent_id,
+              paymentId: intentData.payment_id,
+              secureToken: intentData.secure_token,
+            }
+          });
+          
+          if (methodId === 'oxxo') {
+            window.open(result.url, '_blank');
+            showSuccess(`¡Referencia ${methodId.toUpperCase()} generada! Revisa la nueva ventana.`);
+          } else {
+            window.location.href = result.url;
+          }
+        } else {
+          dispatch({ type: 'PAYMENT_SUCCEEDED' });
+          showSuccess("¡Pago procesado exitosamente!");
+          
+          setTimeout(() => {
+            if (authed) {
+              router.push('/panel');
+            } else {
+              router.push('/pagos/success?redirect=panel');
+            }
+          }, 1500);
+        }
+
+      } catch (error) {
+        console.error(`[Payment] ${methodId} error:`, error);
+        dispatch({ type: 'PAYMENT_FAILED' });
+        showError(error.message || `Error al procesar pago ${methodId.toUpperCase()}`);
+      }
+    }
   };
 
   if (!isOpen) return null;
@@ -1474,7 +1552,6 @@ const ApplyNowModal = ({
     `Estimado/a ${recruiterFirstName}, me gustaría postular a esta vacante. Aunque no tengo mucha experiencia, tengo muchas ganas de aprender, trabajar duro y crecer en su equipo. ¿Podemos agendar una entrevista?`,
   ];
 
-  /* ===================== PaymentMethodPanel ===================== */
   function PaymentMethodPanel({
     active,
     onSelect,
@@ -2709,37 +2786,34 @@ const ApplyNowModal = ({
                           dispatch({ type: 'PAYMENT_PROCESSING' });
 
                           try {
-                            await tonderService.configureCheckout(
+                            console.log('[Payment] Configuring checkout...');
+                            await tonderService.configureCheckout({
+                              firstName: formData.fullName.split(' ')[0] || formData.fullName,
+                              lastName: formData.fullName.split(' ').slice(1).join(' ') || formData.fullName,
+                              email: formData.email.trim(),
+                            });
+
+                            console.log('[Payment] Building card payment data...');
+                            const checkoutData = tonderService.buildCardPaymentData(
                               {
                                 firstName: formData.fullName.split(' ')[0] || formData.fullName,
+                                lastName: formData.fullName.split(' ').slice(1).join(' ') || formData.fullName,
                                 email: formData.email.trim(),
+                                phone: payerPhone || '5512345678',
+                                country: 'Mexico',
+                                paymentType: 'job_unlock'
                               },
-                              currentSecureToken
+                              {
+                                cardNumber: cardNumber,
+                                cvv: cardCvvInput.value,
+                                expirationMonth: expMonth,
+                                expirationYear: expYear,
+                                cardholderName: cardNameInput.value || formData.fullName,
+                              },
+                              79
                             );
 
-                            const checkoutData = {
-                              customer: {
-                                firstName: formData.fullName.split(' ')[0] || formData.fullName,
-                                lastName: formData.fullName.split(' ').slice(1).join(' ') || '',
-                                email: formData.email.trim(),
-                              },
-                              currency: 'mxn',
-                              cart: {
-                                total: 79,
-                                items: [{
-                                  name: `Acceso al reclutador - ${job?.title || 'Empleo'}`,
-                                  amount_total: 79
-                                }]
-                              },
-                              card: {
-                                card_number: cardNumber,
-                                cardholder_name: cardNameInput.value || formData.fullName,
-                                expiration_month: expMonth,
-                                expiration_year: fullYear,
-                                cvv: cardCvvInput.value,
-                              }
-                            };
-
+                            console.log('[Payment] Processing card payment...');
                             const paymentResponse = await tonderService.processPayment(checkoutData);
 
                             if (paymentResponse.success) {
