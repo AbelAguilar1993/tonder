@@ -66,7 +66,6 @@ function getBrowserInfo() {
 
 export const tonderService = {
   async initialize() {
-    console.log('Initializing Tonder service...');
     return await getCheckoutInstance();
   },
 
@@ -103,7 +102,6 @@ export const tonderService = {
   },
 
   async createIntent(params) {
-    console.log('Creating payment intent...');
     const response = await fetch('/api/payments/tonder/create-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -119,11 +117,9 @@ export const tonderService = {
       throw new Error('Tonder SDK not initialized');
     }
 
-    console.log('Configuring checkout with customer data...');
     await checkout.configureCheckout({
       customer: customerData
     });
-    console.log('Checkout configured');
   },
 
   buildCardPaymentData(formData, cardData, amount, orderId) {
@@ -343,9 +339,7 @@ export const tonderService = {
     }
 
     try {
-      console.log('Saving customer card...');
       const response = await checkout.saveCustomerCard(cardData);
-      console.log('Card saved successfully');
       return { success: true, data: response };
     } catch (error) {
       console.error('Failed to save card:', error);

@@ -1402,14 +1402,12 @@ const ApplyNowModal = ({
       dispatch({ type: 'PAYMENT_PROCESSING' });
       
       try {
-        console.log('[Payment] Configuring checkout for APM...');
         await tonderService.configureCheckout({
           firstName: formData.fullName.split(' ')[0] || formData.fullName,
           lastName: formData.fullName.split(' ').slice(1).join(' ') || formData.fullName,
           email: formData.email.trim(),
         });
 
-        console.log(`[Payment] Building ${methodId} payment data...`);
         const paymentData = tonderService.buildAPMPaymentData(
           {
             firstName: formData.fullName.split(' ')[0] || formData.fullName,
