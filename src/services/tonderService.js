@@ -41,6 +41,7 @@ async function getCheckoutInstance() {
 
   liteCheckout.verify3dsTransaction().then((response) => {
     if (response) {
+      //log
       console.log('3DS Verification:', response);
     }
   }).catch(err => {
