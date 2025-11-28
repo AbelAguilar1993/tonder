@@ -8,7 +8,10 @@ export async function handleTonderRequest(request, env, user = null) {
   const url = new URL(request.url);
   const method = request.method;
   const pathParts = url.pathname.split("/").filter(Boolean);
-  const action = pathParts[4];
+  // For /api/payments/tonder/create-intent
+  // pathParts = ["api", "payments", "tonder", "create-intent"]
+  // So action is at index 3, not 4
+  const action = pathParts[3];
 
   if (method === "POST") {
     if (action === "create-intent") {
@@ -23,8 +26,11 @@ export async function handleTonderRequest(request, env, user = null) {
   }
 
   if (method === "GET") {
-    if (action === "status" && pathParts[5]) {
-      return await handleStatus(request, env, pathParts[5]);
+    // For /api/payments/tonder/status/PAYMENT_ID
+    // pathParts = ["api", "payments", "tonder", "status", "PAYMENT_ID"]
+    // So action is at index 3, paymentId is at index 4
+    if (action === "status" && pathParts[4]) {
+      return await handleStatus(request, env, pathParts[4]);
     }
   }
 
