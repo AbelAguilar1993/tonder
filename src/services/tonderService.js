@@ -103,7 +103,8 @@ export const tonderService = {
   },
 
   async createIntent(params) {
-    const response = await fetch('/api/payments/tonder/create-intent', {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://apoyoalempleo.quiniela.workers.dev/api';
+    const response = await fetch(`${apiUrl}/payments/tonder/create-intent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -365,7 +366,8 @@ export const tonderService = {
   },
 
   async charge(params) {
-    const response = await fetch('/api/payments/tonder/charge', {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://apoyoalempleo.quiniela.workers.dev/api';
+    const response = await fetch(`${apiUrl}/payments/tonder/charge`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -374,7 +376,8 @@ export const tonderService = {
   },
 
   async getStatus(paymentId) {
-    const response = await fetch(`/api/payments/tonder/status/${paymentId}`);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://apoyoalempleo.quiniela.workers.dev/api';
+    const response = await fetch(`${apiUrl}/payments/tonder/status/${paymentId}`);
     return await response.json();
   },
 

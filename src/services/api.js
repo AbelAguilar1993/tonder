@@ -6,8 +6,13 @@ import axios from "axios";
  */
 
 // Base API configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://apoyoalempleo.quiniela.workers.dev/api";
 const API_TIMEOUT = 30000; // 30 seconds
+
+// Log API URL in development for debugging
+if (process.env.NODE_ENV === "development") {
+  console.log("🔗 API Base URL:", API_BASE_URL);
+}
 
 // Create axios instance with default configuration
 const apiClient = axios.create({
