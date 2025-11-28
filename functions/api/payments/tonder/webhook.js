@@ -110,7 +110,10 @@ async function handleJobUnlockNotification(env, data, user_id, metadata) {
   const now = new Date().toISOString();
 
   await env.DB.prepare(
-    `INSERT INTO user_job_applications (user_id, job_id, contact_id, status, credits_spent, unlocked_at, created_at, updated_at, preset_chips)
+    `INSERT INTO user_job_applications (
+      user_id, job_id, contact_id, status, credits_spent,
+      unlocked_at, created_at, updated_at, preset_chips
+    )
     VALUES (?, ?, ?, 'unlocked', 0, ?, ?, ?, ?)`,
   )
     .bind(user_id, job_id, contact_id, now, now, now, presetChipsJson)
@@ -122,54 +125,24 @@ async function handleJobUnlockNotification(env, data, user_id, metadata) {
   );
 }
 
-function verifySignature(payload, signature, secret) {
-  const payloadString = JSON.stringify(payload);
-  
-  const encoder = new TextEncoder();
-  const key = encoder.encode(secret);
-  const data = encoder.encode(payloadString);
-
-  return crypto.subtle
-    .importKey(
-      "raw",
-      key,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"],
-    )
-    .then((key) => crypto.subtle.sign("HMAC", key, data))
-    .then((signatureBuffer) => {
-      const hashArray = Array.from(new Uint8Array(signatureBuffer));
-      const hashHex = hashArray
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      return `sha256=${hashHex}` === signature;
-    });
-}
 
 export async function handleWebhook(request, env) {
   try {
-    const payload = await request.json();
-    const signature = request.headers.get("x-tonder-signature");
-
-    console.log('[Webhook] Received payload:', JSON.stringify(payload, null, 2));
-
-    // Verify signature if secret is configured
-    if (env.TONDER_WEBHOOK_SECRET) {
-      const isValid = await verifySignature(
-        payload,
-        signature,
-        env.TONDER_WEBHOOK_SECRET,
-      );
-
-      if (!isValid) {
-        console.error('[Webhook] Invalid signature');
-        return createResponse({ error: "Invalid signature" }, 401);
-      }
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || authHeader !== env.TONDER_WEBHOOK_API_TOKEN) {
+      console.error("[Webhook] Unauthorized request:", authHeader);
+      return createResponse({ error: "Unauthorized" }, 401);
     }
 
+    const payload = await request.json();
+
+    console.log("[Webhook] ========== WEBHOOK RECEIVED ==========");
+    console.log("[Webhook] Full payload:", JSON.stringify(payload, null, 2));
+
+    const isAPMWebhook =
+      payload.type === "apm" ||
+      payload.data?.payment_method_name !== undefined;
     const isCardWebhook = payload.card_brand !== undefined;
-    const isAPMWebhook = payload.type === "apm" || payload.data?.payment_method_name !== undefined;
 
     let eventId, transactionRef, status, metadata, paymentMethodName;
 
@@ -187,87 +160,128 @@ export async function handleWebhook(request, env) {
       paymentMethodName = payload.card_brand?.toLowerCase();
     }
 
-    console.log('[Webhook] Parsed data:', {
+    console.log("[Webhook] Parsed data:", {
       eventId,
       transactionRef,
       status,
       paymentMethodName,
-      metadata
+      metadata,
     });
 
     const existingEvent = await env.DB.prepare(
-      "SELECT * FROM tonder_webhook_events WHERE event_id = ?",
+      "SELECT processed FROM tonder_webhook_events WHERE event_id = ?",
     )
       .bind(eventId)
       .first();
 
     if (existingEvent?.processed) {
-      console.log('[Webhook] Already processed:', eventId);
+      console.log("[Webhook] Already processed:", eventId);
       return createResponse(
         { success: true, message: "Already processed" },
         200,
       );
     }
 
-    await env.DB.prepare(
-      `INSERT INTO tonder_webhook_events (event_id, payment_id, event_type, payload)
-      VALUES (?, ?, ?, ?)`,
-    )
-      .bind(
-        eventId,
-        transactionRef,
-        isAPMWebhook ? 'apm' : 'card',
-        JSON.stringify(payload),
-      )
-      .run();
-
     let payment = null;
-    
+
     if (metadata.order_id) {
+      console.log("[Webhook] Searching payment by metadata.order_id:", metadata.order_id);
       const payments = await env.DB.prepare(
-        `SELECT * FROM tonder_payments WHERE json_extract(metadata, '$.order_id') = ?`
+        `SELECT * FROM tonder_payments WHERE json_extract(metadata, '$.order_id') = ?`,
       )
         .bind(metadata.order_id)
         .all();
-      
-      payment = payments.results?.[0];
-      console.log('[Webhook] Found payment by order_id:', payment?.payment_id);
+
+      payment = payments.results?.[0] || null;
+
+      if (payment) {
+        console.log("[Webhook] ✅ Found payment by order_id:", payment.payment_id);
+      }
     }
 
     if (!payment && transactionRef) {
+      console.log("[Webhook] Searching payment by transaction_reference:", transactionRef);
       payment = await env.DB.prepare(
         "SELECT * FROM tonder_payments WHERE payment_id = ? OR intent_id = ?",
       )
         .bind(transactionRef, transactionRef)
         .first();
-      
-      console.log('[Webhook] Found payment by transaction_reference:', payment?.payment_id);
+
+      if (payment) {
+        console.log("[Webhook] ✅ Found payment by transaction_reference:", payment.payment_id);
+      }
+    }
+
+    if (!payment && isAPMWebhook && payload.data?.payment_id != null) {
+      const tonderPaymentId = String(payload.data.payment_id);
+      console.log("[Webhook] Searching payment by data.payment_id:", tonderPaymentId);
+
+      payment = await env.DB.prepare(
+        "SELECT * FROM tonder_payments WHERE payment_id = ?",
+      )
+        .bind(tonderPaymentId)
+        .first();
+
+      if (payment) {
+        console.log("[Webhook] ✅ Found payment by data.payment_id:", payment.payment_id);
+      }
     }
 
     if (!payment) {
-      console.error('[Webhook] Payment not found for transaction:', transactionRef);
-      await env.DB.prepare(
-        `UPDATE tonder_webhook_events SET processed = 1 WHERE event_id = ?`,
-      )
-        .bind(eventId)
-        .run();
-      
+      console.error(
+        "[Webhook] ❌ Payment not found for transaction:",
+        transactionRef,
+      );
+
       return createResponse(
-        { success: true, message: "Payment not found, but webhook logged" },
+        {
+          success: false,
+          message: "Payment not found, but webhook received. Check logs.",
+          debug: {
+            event_id: eventId,
+            transaction_reference: transactionRef,
+            metadata,
+          },
+        },
         200,
       );
     }
 
-    const normalizedStatus = status === "Success" ? "succeeded" : 
-                             status === "Pending" ? "pending" : 
-                             status === "Failed" ? "failed" : 
-                             status.toLowerCase();
+    try {
+      await env.DB.prepare(
+        `INSERT INTO tonder_webhook_events (event_id, payment_id, event_type, payload)
+         VALUES (?, ?, ?, ?)`,
+      )
+        .bind(
+          eventId,
+          payment.payment_id,
+          isAPMWebhook ? "apm" : isCardWebhook ? "card" : "unknown",
+          JSON.stringify(payload),
+        )
+        .run();
+    } catch (err) {
+      if (String(err).includes("UNIQUE constraint failed: tonder_webhook_events.event_id")) {
+        console.warn("[Webhook] Event already logged, continuing:", eventId);
+      } else {
+        console.error("[Webhook] Error inserting webhook event:", err);
+      }
+    }
+
+    const normalizedStatus =
+      status === "Success"
+        ? "succeeded"
+        : status === "Pending"
+        ? "pending"
+        : status === "Failed"
+        ? "failed"
+        : status?.toLowerCase?.() || "unknown";
 
     const now = new Date().toISOString();
+
     await env.DB.prepare(
       `UPDATE tonder_payments 
-      SET status = ?, payment_method = ?, updated_at = ?, paid_at = ?
-      WHERE payment_id = ?`,
+       SET status = ?, payment_method = ?, updated_at = ?, paid_at = ?
+       WHERE payment_id = ?`,
     )
       .bind(
         normalizedStatus,
@@ -278,17 +292,17 @@ export async function handleWebhook(request, env) {
       )
       .run();
 
-    console.log('[Webhook] Updated payment status:', {
+    console.log("[Webhook] Updated payment status:", {
       payment_id: payment.payment_id,
       status: normalizedStatus,
-      payment_method: paymentMethodName
+      payment_method: paymentMethodName,
     });
 
     if (normalizedStatus === "succeeded") {
       const paymentMetadata = JSON.parse(payment.metadata || "{}");
 
       if (payment.payment_type === "job_unlock") {
-        console.log('[Webhook] Processing job unlock...');
+        console.log("[Webhook] Processing job unlock...");
         await handleJobUnlockNotification(
           env,
           { transaction_reference: transactionRef },
@@ -296,7 +310,7 @@ export async function handleWebhook(request, env) {
           paymentMetadata,
         );
       } else if (payment.payment_type === "credits_purchase") {
-        console.log('[Webhook] Processing credits purchase...');
+        console.log("[Webhook] Processing credits purchase...");
         await handleCreditsPurchaseNotification(
           env,
           { transaction_reference: transactionRef },
@@ -306,20 +320,23 @@ export async function handleWebhook(request, env) {
       }
     }
 
-    await env.DB.prepare(
-      `UPDATE tonder_webhook_events SET processed = 1 WHERE event_id = ?`,
-    )
-      .bind(eventId)
-      .run();
+    try {
+      await env.DB.prepare(
+        `UPDATE tonder_webhook_events SET processed = 1 WHERE event_id = ?`,
+      )
+        .bind(eventId)
+        .run();
+    } catch (err) {
+      console.error("[Webhook] Error marking event as processed:", err);
+    }
 
-    console.log('[Webhook] Successfully processed webhook:', eventId);
+    console.log("[Webhook] Successfully processed webhook:", eventId);
     return createResponse({ success: true }, 200);
   } catch (error) {
-    console.error('[Webhook] Error:', error);
+    console.error("[Webhook] Error:", error);
     return createResponse(
       { error: "Internal server error", message: error.message },
       500,
     );
   }
 }
-
