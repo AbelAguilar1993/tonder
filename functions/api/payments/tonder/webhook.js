@@ -125,7 +125,6 @@ async function handleJobUnlockNotification(env, data, user_id, metadata) {
   );
 }
 
-
 export async function handleWebhook(request, env) {
   try {
     const authHeader = request.headers.get("Authorization");
@@ -148,7 +147,7 @@ export async function handleWebhook(request, env) {
 
     if (isAPMWebhook && payload.data) {
       eventId = payload.data.id;
-      transactionRef = payload.data.transaction_reference;
+      transactionRef = payload.data.transaction_reference || null;
       status = payload.data.transaction_status;
       metadata = payload.data.metadata || {};
       paymentMethodName = payload.data.payment_method_name;
@@ -159,6 +158,9 @@ export async function handleWebhook(request, env) {
       metadata = payload.metadata || {};
       paymentMethodName = payload.card_brand?.toLowerCase();
     }
+
+    const payloadAmount =
+      isAPMWebhook && payload.data ? payload.data.amount : payload.amount;
 
     console.log("[Webhook] Parsed data:", {
       eventId,
@@ -185,7 +187,10 @@ export async function handleWebhook(request, env) {
     let payment = null;
 
     if (metadata.order_id) {
-      console.log("[Webhook] Searching payment by metadata.order_id:", metadata.order_id);
+      console.log(
+        "[Webhook] Searching payment by metadata.order_id:",
+        metadata.order_id,
+      );
       const payments = await env.DB.prepare(
         `SELECT * FROM tonder_payments WHERE json_extract(metadata, '$.order_id') = ?`,
       )
@@ -195,12 +200,18 @@ export async function handleWebhook(request, env) {
       payment = payments.results?.[0] || null;
 
       if (payment) {
-        console.log("[Webhook] ✅ Found payment by order_id:", payment.payment_id);
+        console.log(
+          "[Webhook] ✅ Found payment by order_id:",
+          payment.payment_id,
+        );
       }
     }
 
     if (!payment && transactionRef) {
-      console.log("[Webhook] Searching payment by transaction_reference:", transactionRef);
+      console.log(
+        "[Webhook] Searching payment by transaction_reference:",
+        transactionRef,
+      );
       payment = await env.DB.prepare(
         "SELECT * FROM tonder_payments WHERE payment_id = ? OR intent_id = ?",
       )
@@ -208,13 +219,19 @@ export async function handleWebhook(request, env) {
         .first();
 
       if (payment) {
-        console.log("[Webhook] ✅ Found payment by transaction_reference:", payment.payment_id);
+        console.log(
+          "[Webhook] ✅ Found payment by transaction_reference:",
+          payment.payment_id,
+        );
       }
     }
 
     if (!payment && isAPMWebhook && payload.data?.payment_id != null) {
       const tonderPaymentId = String(payload.data.payment_id);
-      console.log("[Webhook] Searching payment by data.payment_id:", tonderPaymentId);
+      console.log(
+        "[Webhook] Searching payment by data.payment_id:",
+        tonderPaymentId,
+      );
 
       payment = await env.DB.prepare(
         "SELECT * FROM tonder_payments WHERE payment_id = ?",
@@ -223,7 +240,47 @@ export async function handleWebhook(request, env) {
         .first();
 
       if (payment) {
-        console.log("[Webhook] ✅ Found payment by data.payment_id:", payment.payment_id);
+        console.log(
+          "[Webhook] ✅ Found payment by data.payment_id:",
+          payment.payment_id,
+        );
+      }
+    }
+
+    if (
+      !payment &&
+      isAPMWebhook &&
+      metadata.payment_type === "job_unlock" &&
+      payloadAmount != null
+    ) {
+      console.log(
+        "[Webhook] Fallback: searching latest pending payment by payment_type + amount:",
+        {
+          payment_type: metadata.payment_type,
+          amount: payloadAmount,
+        },
+      );
+
+      payment = await env.DB.prepare(
+        `SELECT * FROM tonder_payments
+         WHERE payment_type = ?
+           AND status = 'pending'
+           AND amount = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+        .bind(metadata.payment_type, payloadAmount)
+        .first();
+
+      if (payment) {
+        console.log(
+          "[Webhook] ✅ Found payment by fallback (payment_type + amount):",
+          payment.payment_id,
+        );
+      } else {
+        console.log(
+          "[Webhook] ❌ No payment found by fallback for payment_type + amount",
+        );
       }
     }
 
@@ -260,8 +317,15 @@ export async function handleWebhook(request, env) {
         )
         .run();
     } catch (err) {
-      if (String(err).includes("UNIQUE constraint failed: tonder_webhook_events.event_id")) {
-        console.warn("[Webhook] Event already logged, continuing:", eventId);
+      if (
+        String(err).includes(
+          "UNIQUE constraint failed: tonder_webhook_events.event_id",
+        )
+      ) {
+        console.warn(
+          "[Webhook] Event already logged, continuing:",
+          eventId,
+        );
       } else {
         console.error("[Webhook] Error inserting webhook event:", err);
       }
